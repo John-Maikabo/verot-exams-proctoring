@@ -237,15 +237,16 @@ class ProctoringApp {
                     console.log(`  Server ${index}: ${type} - ${urls}`);
                 });
                 
-                this.updateStatus('✅ TURN servers loaded', 'connected');
+                this.updateStatus('Ready', 'connected');
             } else {
                 console.warn('⚠️ No Twilio TURN servers available, using fallback');
                 this.twilioTurnServers = this.getFallbackIceServers();
+                this.updateStatus('Not connected', 'disconnected');
             }
         } catch (error) {
             console.warn('⚠️ Failed to fetch TURN servers:', error);
             this.twilioTurnServers = this.getFallbackIceServers();
-            this.updateStatus('⚠️ Using fallback servers', 'connecting');
+            this.updateStatus('Not connected', 'disconnected');
         }
     }
     
