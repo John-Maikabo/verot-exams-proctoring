@@ -6,9 +6,8 @@
         single: 'Single choice',
         multiple: 'Multiple choice',
         truefalse: 'True / false',
-        short: 'Short answer'
+        short: 'Essay'
     };
-    const DIFFICULTY_LABELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
     const state = {
         pageRole: window.PAGE_ROLE || null,
@@ -185,8 +184,7 @@
                 <div class="question-card-head">
                     <span class="q-type-chip">${typeLabel(question.type)}</span>
                     <span class="q-meta">
-                        ${escapeHtml(question.subject)}${question.topic ? ` &middot; ${escapeHtml(question.topic)}` : ''}
-                        &middot; ${marksLabel(question.marks)} &middot; ${DIFFICULTY_LABELS[question.difficulty] || 'Medium'}
+                        ${escapeHtml(question.subject)} &middot; ${marksLabel(question.marks)}
                     </span>
                     <div class="q-actions">
                         <button type="button" class="icon-btn" data-action="edit-question" data-id="${escapeAttr(question.id)}" title="Edit question">
@@ -214,10 +212,10 @@
             : '<i class="fas fa-plus"></i> New question';
         el('questionId').value = question ? question.id : '';
         el('questionSubject').value = question ? question.subject : '';
-        el('questionTopic').value = question ? question.topic || '' : '';
-        el('questionType').value = question ? question.type : 'single';
+        const typeSelect = el('questionType');
+        typeSelect.value = question ? question.type : 'multiple';
+        if (!typeSelect.value) typeSelect.value = 'multiple';
         el('questionMarks').value = question ? question.marks : 1;
-        el('questionDifficulty').value = question ? question.difficulty : 'medium';
         el('questionPrompt').value = question ? question.prompt : '';
 
         renderOptionEditor(
@@ -316,11 +314,9 @@
         const type = el('questionType').value;
         const payload = {
             subject: el('questionSubject').value.trim(),
-            topic: el('questionTopic').value.trim(),
             type,
             prompt: el('questionPrompt').value.trim(),
             marks: Number(el('questionMarks').value) || 1,
-            difficulty: el('questionDifficulty').value,
             options: [],
             correct: []
         };
