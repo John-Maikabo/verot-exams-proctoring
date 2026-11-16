@@ -770,6 +770,8 @@ class ProctoringApp {
         document.getElementById('snapshotBtn').disabled = true;
         document.getElementById('recordBtn').disabled = true;
         this.setClassroomControlsEnabled(false);
+
+        window.examWorkspace?.setSession?.({ roomId: this.roomId, userType: this.userType });
     }
     
     updateSessionDescription() {
@@ -1083,6 +1085,8 @@ class ProctoringApp {
                 this.updateParticipantList();
                 this.updateHandIndicators();
                 this.updatePresentationView();
+                window.examWorkspace?.setSession?.({ roomId: this.roomId, userType: this.userType });
+                if (data.exam !== undefined) window.examWorkspace?.setExamFromServer?.(data.exam);
                 this.showMessage(`✅ Connected as ${this.userName}`, 'success');
                 
                 // If we already have local stream, connect to existing participants
@@ -1231,6 +1235,14 @@ class ProctoringApp {
                 
             case 'chat':
                 this.displayChatMessage(data.senderName, data.message, data.senderId !== this.userId);
+                break;
+
+            case 'exam-started':
+            case 'exam-ended':
+            case 'exam-progress':
+            case 'exam-submitted':
+            case 'exam-receipt':
+                window.examWorkspace?.handleSignalingMessage?.(data);
                 break;
                 
             case 'offer':

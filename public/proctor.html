@@ -220,6 +220,32 @@
 
             <!-- Right panel - live monitoring -->
             <section class="panel video-panel">
+                <div class="workspace-tabs" data-role="proctor-only" role="tablist" aria-label="Invigilator workspace">
+                    <button type="button" class="workspace-tab active" data-workspace="live" role="tab" aria-selected="true">
+                        <i class="fas fa-video"></i> Live session
+                    </button>
+                    <button type="button" class="workspace-tab" data-workspace="bank" role="tab" aria-selected="false">
+                        <i class="fas fa-book-open"></i> Question bank <span class="tab-count" id="bankCount">0</span>
+                    </button>
+                    <button type="button" class="workspace-tab" data-workspace="exams" role="tab" aria-selected="false">
+                        <i class="fas fa-file-pen"></i> Exam setup
+                    </button>
+                    <span class="workspace-tab-spacer"></span>
+                    <button type="button" class="exam-live-chip hidden" id="examLiveChip" title="Open exam setup">
+                        <i class="fas fa-tower-broadcast"></i> <span id="examLiveTitle">Exam live</span>
+                    </button>
+                </div>
+
+                <div class="workspace-tabs student-tabs" data-role="student-only" role="tablist" aria-label="Student workspace">
+                    <button type="button" class="workspace-tab active" data-workspace="live" role="tab" aria-selected="true">
+                        <i class="fas fa-video"></i> Session
+                    </button>
+                    <button type="button" class="workspace-tab" data-workspace="exams" role="tab" aria-selected="false">
+                        <i class="fas fa-file-lines"></i> Exam paper <span class="tab-count tab-live hidden" id="studentExamBadge">Live</span>
+                    </button>
+                </div>
+
+                <div class="workspace-panel" data-workspace-panel="live">
                 <div class="console-bar" data-role="proctor-only">
                     <h2><i class="fas fa-shield-halved"></i> Live monitoring</h2>
                     <div class="console-stats">
@@ -293,6 +319,189 @@
                         <button id="sendChatBtn" class="btn btn-primary">
                             <i class="fas fa-paper-plane"></i> Send
                         </button>
+                    </div>
+                </div>
+                </div><!-- /workspace-panel live -->
+
+                <div class="workspace-panel hidden" id="workspaceBank" data-workspace-panel="bank" data-role="proctor-only">
+                    <div class="workspace-head">
+                        <div>
+                            <h2><i class="fas fa-book-open"></i> Question bank</h2>
+                            <p class="workspace-sub">Write questions once and reuse them in any paper.</p>
+                        </div>
+                        <button type="button" id="newQuestionBtn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> New question
+                        </button>
+                    </div>
+
+                    <div class="bank-toolbar">
+                        <input type="search" id="bankSearch" placeholder="Search question, topic, or option" autocomplete="off">
+                        <select id="bankSubjectFilter">
+                            <option value="">All subjects</option>
+                        </select>
+                        <select id="bankTypeFilter">
+                            <option value="">All types</option>
+                            <option value="single">Single choice</option>
+                            <option value="multiple">Multiple choice</option>
+                            <option value="truefalse">True / false</option>
+                            <option value="short">Short answer</option>
+                        </select>
+                        <span class="bank-result-count" id="bankResultCount">0 questions</span>
+                    </div>
+
+                    <div class="bank-list" id="bankList"></div>
+                    <div class="empty-state hidden" id="bankEmpty">
+                        <i class="fas fa-book-open"></i>
+                        <h3>No questions yet</h3>
+                        <p>Add your first question to start building the bank.</p>
+                    </div>
+                </div>
+
+                <div class="workspace-panel hidden" id="workspaceExams" data-workspace-panel="exams">
+                    <div class="exam-proctor-view" data-role="proctor-only">
+                        <div class="workspace-head">
+                            <div>
+                                <h2><i class="fas fa-file-pen"></i> Exam setup</h2>
+                                <p class="workspace-sub">Assemble a paper from the bank, then deliver it to your live session.</p>
+                            </div>
+                            <button type="button" id="newExamBtn" class="btn btn-primary">
+                                <i class="fas fa-plus"></i> New exam
+                            </button>
+                        </div>
+
+                        <div class="exam-layout">
+                            <div class="exam-list-wrap">
+                                <h3 class="pane-title">Papers <span class="tab-count" id="examCount">0</span></h3>
+                                <div class="exam-list" id="examList"></div>
+                                <p class="empty-state small hidden" id="examListEmpty">No papers yet. Create one to start.</p>
+                            </div>
+
+                            <div class="exam-editor" id="examEditor">
+                                <div class="empty-state" id="examEditorEmpty">
+                                    <i class="fas fa-file-pen"></i>
+                                    <h3>Select a paper</h3>
+                                    <p>Choose a paper on the left or create a new one.</p>
+                                </div>
+
+                                <div class="hidden" id="examEditorBody">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="examTitle">Paper title</label>
+                                            <input id="examTitle" maxlength="120">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="examDuration">Duration (minutes)</label>
+                                            <input id="examDuration" type="number" min="5" max="480">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="examSubject">Subject</label>
+                                            <input id="examSubject" maxlength="80" list="subjectOptions">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="examMarksDisplay">Total marks</label>
+                                            <input id="examMarksDisplay" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="examDescription">Instructions shown to students</label>
+                                        <textarea id="examDescription" rows="2" maxlength="500"></textarea>
+                                    </div>
+
+                                    <div class="picker-head">
+                                        <h3>Questions <span class="tab-count" id="examSelectedCount">0</span></h3>
+                                        <input type="search" id="examQuestionSearch" placeholder="Search the bank" autocomplete="off">
+                                    </div>
+                                    <div class="question-picker" id="examQuestionPicker"></div>
+
+                                    <div class="exam-actions">
+                                        <button id="saveExamBtn" class="btn btn-primary">
+                                            <i class="fas fa-floppy-disk"></i> Save paper
+                                        </button>
+                                        <button id="deleteExamBtn" class="btn btn-secondary">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </div>
+
+                                    <div class="delivery-card">
+                                        <div class="delivery-head">
+                                            <h3><i class="fas fa-paper-plane"></i> Deliver to session</h3>
+                                            <span class="delivery-status" id="deliveryStatus">Not delivered</span>
+                                        </div>
+                                        <p class="delivery-session" id="deliverySessionText">Create or join a session first.</p>
+                                        <div class="delivery-actions">
+                                            <button id="deliverExamBtn" class="btn btn-success" disabled>
+                                                <i class="fas fa-tower-broadcast"></i> Deliver exam
+                                            </button>
+                                            <button id="endExamBtn" class="btn btn-danger hidden">
+                                                <i class="fas fa-stop"></i> End exam
+                                            </button>
+                                        </div>
+                                        <div class="exam-results hidden" id="examResults">
+                                            <div class="result-stats" id="resultStats"></div>
+                                            <div class="result-table-wrap">
+                                                <table class="result-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Student</th>
+                                                            <th>Status</th>
+                                                            <th>Auto score</th>
+                                                            <th>Review</th>
+                                                            <th>Submitted</th>
+                                                            <th>Answers</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="resultRows"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="exam-student-view" data-role="student-only">
+                        <div class="empty-state" id="studentExamEmpty">
+                            <i class="fas fa-file-circle-question"></i>
+                            <h3>No exam yet</h3>
+                            <p>Your invigilator has not published a paper for this session.</p>
+                        </div>
+
+                        <div class="exam-paper hidden" id="studentExamPaper">
+                            <div class="paper-head">
+                                <div>
+                                    <span class="paper-subject" id="studentExamSubject"></span>
+                                    <h2 id="studentExamTitle">Exam</h2>
+                                    <p id="studentExamDescription" class="paper-description"></p>
+                                </div>
+                                <div class="paper-meta">
+                                    <div class="paper-timer" id="studentExamTimer">--:--</div>
+                                    <div class="paper-marks">
+                                        <span id="studentExamMarks">0</span> marks &middot;
+                                        <span id="studentExamCount">0</span> questions
+                                    </div>
+                                    <span class="paper-status" id="studentExamStatus">Not started</span>
+                                </div>
+                            </div>
+
+                            <form id="studentExamForm">
+                                <div id="studentExamQuestions" class="paper-questions"></div>
+                                <div class="paper-actions">
+                                    <p class="save-hint" id="studentSaveHint"><i class="fas fa-cloud"></i> Answers save automatically.</p>
+                                    <button type="submit" id="studentSubmitBtn" class="btn btn-primary">
+                                        <i class="fas fa-paper-plane"></i> Submit exam
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="exam-complete hidden" id="studentExamComplete">
+                            <i class="fas fa-circle-check"></i>
+                            <h3>Exam submitted</h3>
+                            <p id="studentCompleteText">Your answers have been sent to the invigilator.</p>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -375,6 +584,102 @@
             </div>
         </div>
 
+        <!-- Question editor -->
+        <div id="questionModal" class="modal hidden">
+            <div class="modal-content modal-wide">
+                <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New question</h2>
+                <form id="questionForm">
+                    <input type="hidden" id="questionId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="questionSubject">Subject <span class="required-star">*</span></label>
+                            <input id="questionSubject" list="subjectOptions" maxlength="80" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="questionTopic">Topic</label>
+                            <input id="questionTopic" maxlength="120">
+                        </div>
+                    </div>
+                    <div class="form-row form-row-3">
+                        <div class="form-group">
+                            <label for="questionType">Type</label>
+                            <select id="questionType">
+                                <option value="single">Single choice</option>
+                                <option value="multiple">Multiple choice</option>
+                                <option value="truefalse">True / false</option>
+                                <option value="short">Short answer</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="questionMarks">Marks</label>
+                            <input id="questionMarks" type="number" min="1" max="20" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="questionDifficulty">Difficulty</label>
+                            <select id="questionDifficulty">
+                                <option value="easy">Easy</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="hard">Hard</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="questionPrompt">Question <span class="required-star">*</span></label>
+                        <textarea id="questionPrompt" rows="3" maxlength="2000" required></textarea>
+                    </div>
+                    <div class="form-group" id="questionOptionsGroup">
+                        <label>Answer options</label>
+                        <div id="questionOptions" class="option-editor"></div>
+                        <button type="button" id="addOptionBtn" class="btn btn-secondary btn-small">
+                            <i class="fas fa-plus"></i> Add option
+                        </button>
+                        <p class="form-hint" id="questionOptionsHint">Tick the correct answer.</p>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" id="cancelQuestionBtn" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-floppy-disk"></i> Save question
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- New exam -->
+        <div id="examModal" class="modal hidden">
+            <div class="modal-content">
+                <h2><i class="fas fa-file-pen"></i> New exam paper</h2>
+                <form id="examForm">
+                    <div class="form-group">
+                        <label for="newExamTitle">Paper title <span class="required-star">*</span></label>
+                        <input id="newExamTitle" maxlength="120" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="newExamSubject">Subject</label>
+                            <input id="newExamSubject" maxlength="80" list="subjectOptions">
+                        </div>
+                        <div class="form-group">
+                            <label for="newExamDuration">Duration (minutes)</label>
+                            <input id="newExamDuration" type="number" min="5" max="480" value="60">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newExamDescription">Instructions</label>
+                        <textarea id="newExamDescription" rows="2" maxlength="500"></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" id="cancelExamBtn" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Create paper
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <datalist id="subjectOptions"></datalist>
+
         <footer>
             <p><i class="fas fa-lock"></i> Verot Exams Proctoring &middot; Invigilator portal</p>
             <p class="disclaimer">
@@ -394,5 +699,6 @@
         setInterval(updateCurrentTime, 60000);
     </script>
     <script src="js/main.js"></script>
+    <script src="js/exam.js"></script>
 </body>
 </html>

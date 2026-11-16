@@ -4,6 +4,9 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const twilio = require('twilio');  // Add Twilio for TURN servers
+const { ExamStore, httpError } = require('./lib/exam-store');
+
+const examStore = new ExamStore();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -23,6 +26,8 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
 });
+
+app.use(express.json({ limit: '256kb' }));
 
 // ==================== TWILIO TURN ENDPOINTS ====================
 
@@ -189,7 +194,7 @@ app.get('/api/create-room', (req, res) => {
         isActive: false
     });
     
-    const roomLink = `${req.protocol}://${req.get('host')}/?room=${roomId}&type=candidate`;
+    const roomLink = `${req.protocol}://${req.get('host')}/student.html?room=${roomId}&type=candidate`;
     
     res.json({
         success: true,
@@ -252,9 +257,260 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString(),
         rooms: rooms.size,
         connections: connections.size,
+        storage: examStore.storageName,
         uptime: process.uptime()
     });
 });
+
+// ==================== QUESTION BANK API ====================
+
+function sendApiError(res, error) {
+    const status = error.status || 500;
+    if (status >= 500) console.error('API error:', error);
+    res.status(status).json({ success: false, error: error.message || 'Request failed' });
+}
+
+const asyncRoute = (handler) => (req, res) => {
+    Promise.resolve(handler(req, res)).catch(error => sendApiError(res, error));
+};
+
+app.get('/api/questions', asyncRoute(async (req, res) => {
+    const [questions, subjects] = await Promise.all([
+        examStore.listQuestions({
+            subject: req.query.subject,
+            type: req.query.type,
+            search: req.query.search
+        }),
+        examStore.listSubjects()
+    ]);
+    res.json({ success: true, questions, subjects, storage: examStore.storageName });
+}));
+
+app.get('/api/questions/subjects', asyncRoute(async (req, res) => {
+    res.json({ success: true, subjects: await examStore.listSubjects() });
+}));
+
+app.post('/api/questions', asyncRoute(async (req, res) => {
+    const question = await examStore.createQuestion(req.body || {});
+    res.status(201).json({ success: true, question });
+}));
+
+app.put('/api/questions/:id', asyncRoute(async (req, res) => {
+    const question = await examStore.updateQuestion(req.params.id, req.body || {});
+    res.json({ success: true, question });
+}));
+
+app.delete('/api/questions/:id', asyncRoute(async (req, res) => {
+    const examsChanged = await examStore.deleteQuestion(req.params.id);
+    res.json({ success: true, examsChanged });
+}));
+
+app.get('/api/exams', asyncRoute(async (req, res) => {
+    const exams = await examStore.listExams();
+    res.json({
+        success: true,
+        exams: exams.map(exam => ({
+            ...exam,
+            questionCount: exam.questions.length,
+            totalMarks: exam.questions.reduce((sum, item) => sum + (item.marks || 1), 0)
+        }))
+    });
+}));
+
+app.post('/api/exams', asyncRoute(async (req, res) => {
+    const exam = await examStore.createExam(req.body || {});
+    res.status(201).json({ success: true, exam });
+}));
+
+app.get('/api/exams/:id', asyncRoute(async (req, res) => {
+    const exam = await examStore.getExam(req.params.id, { resolveQuestions: true });
+    res.json({ success: true, exam });
+}));
+
+app.put('/api/exams/:id', asyncRoute(async (req, res) => {
+    const exam = await examStore.updateExam(req.params.id, req.body || {});
+    res.json({ success: true, exam });
+}));
+
+app.delete('/api/exams/:id', asyncRoute(async (req, res) => {
+    await examStore.deleteExam(req.params.id);
+    res.json({ success: true });
+}));
+
+// ==================== ROOM EXAM DELIVERY API ====================
+
+function candidateCount(room) {
+    const ids = new Set();
+    room.participants.forEach(participant => {
+        if (participant.userType === 'candidate') ids.add(participant.userId);
+    });
+    if (room.exam) {
+        room.exam.answers.forEach((answers, userId) => ids.add(userId));
+        room.exam.submissions.forEach((submission, userId) => ids.add(userId));
+    }
+    return ids.size;
+}
+
+function examTotalMarks(exam) {
+    return exam.questions.reduce((sum, question) => sum + (question.marks || 1), 0);
+}
+
+function examPayloadFor(room, userType, userId = null) {
+    const exam = room.exam;
+    if (!exam) return null;
+
+    const base = {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        subject: exam.subject,
+        durationMinutes: exam.durationMinutes,
+        startedAt: exam.startedAt,
+        endsAt: exam.endsAt,
+        endedAt: exam.endedAt,
+        status: exam.status,
+        questionCount: exam.questions.length,
+        totalMarks: examTotalMarks(exam)
+    };
+
+    if (userType === 'proctor') {
+        return {
+            ...base,
+            questions: exam.questions.map(question => ({
+                ...question,
+                options: question.options.slice(),
+                correct: question.correct.slice()
+            })),
+            candidateCount: candidateCount(room),
+            answeredCount: exam.answers.size,
+            submittedCount: exam.submissions.size,
+            submissions: Array.from(exam.submissions.values())
+                .sort((a, b) => a.submittedAt - b.submittedAt)
+                .map(submission => ({ ...submission }))
+        };
+    }
+
+    const submission = exam.submissions.get(userId);
+    return {
+        ...base,
+        questions: exam.questions.map(({ correct, ...question }) => question),
+        myAnswers: exam.answers.get(userId) || {},
+        mySubmission: submission ? {
+            submittedAt: submission.submittedAt,
+            autoScore: exam.status === 'ended' ? submission.autoScore : null,
+            autoPossible: submission.autoPossible,
+            needsReview: submission.needsReview
+        } : null
+    };
+}
+
+function examSnapshot(exam) {
+    return {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        subject: exam.subject,
+        durationMinutes: exam.durationMinutes,
+        startedAt: exam.startedAt,
+        endsAt: exam.endsAt,
+        endedAt: exam.endedAt,
+        status: exam.status,
+        questions: exam.resolvedQuestions.map(question => ({
+            id: question.id,
+            prompt: question.prompt,
+            type: question.type,
+            options: question.options,
+            correct: question.correct.slice(),
+            marks: question.marks
+        })),
+        answers: new Map(),
+        submissions: new Map()
+    };
+}
+
+function broadcastExamToCandidates(room, type) {
+    for (const participant of room.participants.values()) {
+        if (participant.userType !== 'candidate') continue;
+        if (participant.ws.readyState !== WebSocket.OPEN) continue;
+        participant.ws.send(JSON.stringify({
+            type,
+            exam: examPayloadFor(room, 'candidate', participant.userId),
+            timestamp: Date.now()
+        }));
+    }
+}
+
+function notifyProctor(room, message) {
+    for (const participant of room.participants.values()) {
+        if (participant.userType !== 'proctor') continue;
+        if (participant.ws.readyState !== WebSocket.OPEN) continue;
+        participant.ws.send(JSON.stringify(message));
+    }
+}
+
+function broadcastExamProgress(room) {
+    notifyProctor(room, {
+        type: 'exam-progress',
+        exam: examPayloadFor(room, 'proctor'),
+        timestamp: Date.now()
+    });
+}
+
+app.get('/api/rooms/:roomId/exam', asyncRoute(async (req, res) => {
+    const room = rooms.get(req.params.roomId);
+    if (!room) throw httpError(404, 'Room not found');
+    const userId = (req.query.userId || '').toString();
+    const userType = userId && userId === room.proctor ? 'proctor' : 'candidate';
+    res.json({ success: true, exam: examPayloadFor(room, userType, userId) });
+}));
+
+app.post('/api/rooms/:roomId/exam', asyncRoute(async (req, res) => {
+    const room = rooms.get(req.params.roomId);
+    if (!room) throw httpError(404, 'Room not found');
+
+    const { examId, userId } = req.body || {};
+    if (!userId || room.proctor !== userId) {
+        throw httpError(403, 'Only the invigilator who created this session can deliver an exam');
+    }
+    if (room.exam && room.exam.status === 'live') {
+        throw httpError(409, 'An exam is already live in this session. End it first.');
+    }
+
+    const exam = await examStore.getExam(examId, { resolveQuestions: true });
+    if (!exam.resolvedQuestions.length) {
+        throw httpError(400, 'Add at least one question to this exam before delivering it');
+    }
+
+    const now = Date.now();
+    room.exam = examSnapshot({
+        ...exam,
+        startedAt: now,
+        endsAt: now + exam.durationMinutes * 60 * 1000,
+        endedAt: null,
+        status: 'live'
+    });
+
+    broadcastExamToCandidates(room, 'exam-started');
+    res.json({ success: true, exam: examPayloadFor(room, 'proctor') });
+}));
+
+app.post('/api/rooms/:roomId/exam/end', asyncRoute(async (req, res) => {
+    const room = rooms.get(req.params.roomId);
+    if (!room) throw httpError(404, 'Room not found');
+
+    const { userId } = req.body || {};
+    if (!userId || room.proctor !== userId) {
+        throw httpError(403, 'Only the invigilator who created this session can end the exam');
+    }
+    if (!room.exam || room.exam.status !== 'live') {
+        throw httpError(409, 'No exam is currently live in this session');
+    }
+
+    room.exam.status = 'ended';
+    room.exam.endedAt = Date.now();
+    broadcastExamToCandidates(room, 'exam-ended');
+    res.json({ success: true, exam: examPayloadFor(room, 'proctor') });
+}));
 
 // ==================== WEBSOCKET SIGNALING ====================
 
@@ -352,6 +608,7 @@ wss.on('connection', (ws, req) => {
         participantCount: room.participants.size,
         maxParticipants: room.maxParticipants,
         proctor: room.proctor,
+        exam: examPayloadFor(room, userType, userId),
         timestamp: Date.now()
     };
     
@@ -489,6 +746,52 @@ wss.on('connection', (ws, req) => {
         console.error('WebSocket error for user', userId, ':', error);
     });
 });
+
+// Normalize an answer coming from a candidate before it is stored
+function normalizeExamAnswer(question, raw) {
+    if (question.type === 'short') {
+        const value = typeof raw === 'string' ? raw.trim().slice(0, 2000) : '';
+        return value || null;
+    }
+    if (question.type === 'multiple') {
+        const values = Array.isArray(raw) ? raw : [];
+        const indices = [...new Set(values
+            .map(value => Number.parseInt(value, 10))
+            .filter(value => Number.isInteger(value) && value >= 0 && value < question.options.length))]
+            .sort((a, b) => a - b);
+        return indices.length ? indices : null;
+    }
+    const index = Number.parseInt(raw, 10);
+    return Number.isInteger(index) && index >= 0 && index < question.options.length ? index : null;
+}
+
+function scoreSubmission(exam, answers) {
+    let autoScore = 0;
+    let autoPossible = 0;
+    let needsReview = 0;
+
+    for (const question of exam.questions) {
+        if (question.type === 'short') {
+            needsReview++;
+            continue;
+        }
+        autoPossible += question.marks;
+        const given = answers[question.id];
+        let correct = false;
+
+        if (question.type === 'multiple') {
+            const selected = Array.isArray(given) ? given : [];
+            correct = selected.length === question.correct.length
+                && question.correct.every(index => selected.includes(index));
+        } else {
+            correct = Number(given) === question.correct[0];
+        }
+
+        if (correct) autoScore += question.marks;
+    }
+
+    return { autoScore, autoPossible, needsReview };
+}
 
 // Handle different message types
 function handleMessage(roomId, senderId, data) {
@@ -633,6 +936,74 @@ function handleMessage(roomId, senderId, data) {
                 timestamp: Date.now()
             });
             break;
+
+        case 'exam-answer': {
+            const exam = room.exam;
+            if (!exam || exam.status !== 'live' || sender.userType !== 'candidate') break;
+            if (Date.now() > exam.endsAt + 5000) break;
+            if (exam.submissions.has(senderId)) break;
+
+            const question = exam.questions.find(item => item.id === data.questionId);
+            if (!question) break;
+
+            let answers = exam.answers.get(senderId);
+            if (!answers) {
+                answers = {};
+                exam.answers.set(senderId, answers);
+            }
+
+            const value = normalizeExamAnswer(question, data.answer);
+            if (value === null) {
+                delete answers[question.id];
+            } else {
+                answers[question.id] = value;
+            }
+
+            broadcastExamProgress(room);
+            break;
+        }
+
+        case 'exam-submit': {
+            const exam = room.exam;
+            if (!exam || exam.status !== 'live' || sender.userType !== 'candidate') break;
+
+            if (exam.submissions.has(senderId)) {
+                sender.ws.send(JSON.stringify({ type: 'exam-receipt', alreadySubmitted: true, timestamp: Date.now() }));
+                break;
+            }
+
+            const answers = exam.answers.get(senderId) || {};
+            const score = scoreSubmission(exam, answers);
+            const submission = {
+                userId: senderId,
+                name: sender.userName,
+                submittedAt: Date.now(),
+                answers: { ...answers },
+                ...score
+            };
+            exam.submissions.set(senderId, submission);
+
+            notifyProctor(room, {
+                type: 'exam-submitted',
+                userId: senderId,
+                userName: sender.userName,
+                submittedAt: submission.submittedAt,
+                timestamp: Date.now()
+            });
+            broadcastExamProgress(room);
+
+            sender.ws.send(JSON.stringify({
+                type: 'exam-receipt',
+                submission: {
+                    submittedAt: submission.submittedAt,
+                    autoPossible: score.autoPossible,
+                    needsReview: score.needsReview
+                },
+                timestamp: Date.now()
+            }));
+            console.log(`${sender.userName} submitted the exam in room ${roomId}`);
+            break;
+        }
             
         default:
             console.log('Unknown message type:', data.type);
