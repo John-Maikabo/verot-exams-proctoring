@@ -60,6 +60,9 @@ class ProctoringApp {
         this.zoomScale = 1;
         this._zoomAudioTileId = null;
         this._zoomTileMuted = false;
+        this.pageRole = typeof window !== 'undefined' ? (window.PAGE_ROLE || null) : null;
+        this.rosterFilter = 'all';
+        this.rosterSearch = '';
         
         // Check for existing proctor session
         this.checkSavedProctorSession();
@@ -81,6 +84,8 @@ class ProctoringApp {
     }
     
     checkSavedProctorSession() {
+        if (this.pageRole === 'student') return;
+        
         const savedRoom = localStorage.getItem('proctorRoom');
         const savedUserId = localStorage.getItem('proctorUserId');
         
@@ -118,11 +123,16 @@ class ProctoringApp {
             const roomId = params.get('room');
             let userType = params.get('type');
             
+            // Each portal page pins its own role
+            if (this.pageRole === 'proctor') userType = 'proctor';
+            if (this.pageRole === 'student') userType = 'candidate';
+            if (userType) this.userType = userType;
+            
             // Override with saved proctor session if applicable
             const savedRoom = localStorage.getItem('proctorRoom');
             const savedUserId = localStorage.getItem('proctorUserId');
             
-            if (roomId && savedRoom === roomId && savedUserId === this.userId) {
+            if (roomId && savedRoom === roomId && savedUserId === this.userId && this.pageRole !== 'student') {
                 console.log('🎯 Proctor rejoining their own room, forcing proctor role');
                 userType = 'proctor';
                 this.userType = 'proctor';
@@ -142,20 +152,36 @@ class ProctoringApp {
                 const isSavedProctor = savedRoom === roomId && savedUserId === this.userId;
                 const savedCandidate = this.getSavedCandidateSession();
                 const isSavedCandidate = !!savedCandidate && savedCandidate.room === roomId;
-                if (!isSavedProctor && !isSavedCandidate) {
+                if (!isSavedProctor && !isSavedCandidate && this.pageRole !== 'student') {
                     console.log('Showing join options for room:', roomId);
                     this.showJoinModal();
                 }
             }
             
             // The rejoin panel verifies the room still exists before offering it
-            this.showProctorRejoinPanel().then((shown) => {
+            const proctorRejoin = this.pageRole === 'student'
+                ? Promise.resolve(false)
+                : this.showProctorRejoinPanel();
+            proctorRejoin.then((shown) => {
                 if (shown) return;
                 this.showCandidateRejoinPanel();
             });
             this.updateJoinButtonVisibility();
             this.updateCreateButtonVisibility();
             this.updateLocalVideoPlaceholder();
+            this.syncRoleLabels();
+            
+            if (this.pageRole === 'student') {
+                const savedCandidate = this.getSavedCandidateSession() || {};
+                const studentRoomInput = document.getElementById('studentRoomId');
+                if (studentRoomInput && !studentRoomInput.value) {
+                    studentRoomInput.value = roomId || savedCandidate.room || '';
+                }
+                const studentNameInput = document.getElementById('studentName');
+                if (studentNameInput && !studentNameInput.value) {
+                    studentNameInput.value = savedCandidate.name || '';
+                }
+            }
         }, 100);
     }
     
@@ -270,9 +296,24 @@ class ProctoringApp {
     
     isStudentMode() {
         const params = new URLSearchParams(window.location.search);
-        return this.userType === 'candidate'
+        return this.pageRole === 'student'
+            || this.userType === 'candidate'
             || params.get('type') === 'candidate'
             || !!this.getSavedCandidateSession();
+    }
+    
+    roleLabel(type) {
+        return type === 'proctor' ? 'Invigilator' : 'Student';
+    }
+    
+    syncRoleLabels() {
+        const isProctor = this.pageRole !== 'student';
+        const gridTitle = document.getElementById('gridTitle');
+        if (gridTitle) {
+            gridTitle.innerHTML = `<i class="fas fa-users"></i> ${isProctor ? 'Students' : 'Classmates'}`;
+        }
+        const rosterLabel = document.getElementById('rosterLabel');
+        if (rosterLabel) rosterLabel.textContent = isProctor ? 'Students' : 'Classmates';
     }
     
     updateCreateButtonVisibility() {
@@ -566,6 +607,14 @@ class ProctoringApp {
             }
         });
         
+        // Split portal pages: student join card and invigilator roster tools
+        document.getElementById('studentJoinCameraBtn')?.addEventListener('click', () => this.joinFromStudentCard('camera'));
+        document.getElementById('studentJoinAudioBtn')?.addEventListener('click', () => this.joinFromStudentCard('audio'));
+        document.getElementById('studentSearch')?.addEventListener('input', (event) => this.setRosterSearch(event.target.value));
+        document.querySelectorAll('#studentFilters .filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => this.setRosterFilter(chip.dataset.filter || 'all'));
+        });
+        
         // Chat input Enter key
         const chatInput = document.getElementById('chatInput');
         if (chatInput) {
@@ -680,12 +729,12 @@ class ProctoringApp {
     
     updateRoomUI() {
         document.getElementById('roomIdDisplay').textContent = this.roomId;
-        document.getElementById('userRole').textContent = this.userType === 'proctor' ? 'Lecturer' : 'Student';
+        document.getElementById('userRole').textContent = this.roleLabel(this.userType);
         document.getElementById('displayUserName').textContent = this.userName;
         document.getElementById('localName').textContent = this.userName;
-        document.getElementById('localRole').textContent = this.userType === 'proctor' ? 'Lecturer' : 'Student';
+        document.getElementById('localRole').textContent = this.roleLabel(this.userType);
         
-        const shareLink = `${window.location.protocol}//${window.location.host}/?room=${this.roomId}&type=candidate`;
+        const shareLink = `${window.location.protocol}//${window.location.host}/student.html?room=${this.roomId}&type=candidate`;
         document.getElementById('shareLink').value = shareLink;
         
         // Show UI elements
@@ -783,7 +832,7 @@ class ProctoringApp {
         nameInput.classList.remove('input-error');
         
         this.roomId = roomId;
-        this.userType = 'candidate';
+        this.userType = this.pageRole === 'proctor' ? 'proctor' : 'candidate';
         this.joinExistingRoom(mediaMode);
         this.cancelJoin();
     }
@@ -837,7 +886,7 @@ class ProctoringApp {
         const savedRoom = localStorage.getItem('proctorRoom');
         const savedUserId = localStorage.getItem('proctorUserId');
         
-        if (savedRoom && savedUserId === this.userId && this.roomId === savedRoom) {
+        if (this.pageRole !== 'student' && savedRoom && savedUserId === this.userId && this.roomId === savedRoom) {
             wsType = 'proctor'; // Force proctor for room creator
             this.userType = 'proctor';
             console.log('🎯 Forcing proctor role for room creator');
@@ -1219,7 +1268,7 @@ class ProctoringApp {
         
         const participantList = document.getElementById('participantList');
         if (participantList) {
-            const selfRole = this.userType === 'proctor' ? 'Lecturer' : 'Student';
+            const selfRole = this.roleLabel(this.userType);
             let html = `<div class="participant self">
                 <i class="fas fa-user${this.userType === 'proctor' ? '-shield' : ''}"></i>
                 <span>${this.escapeHtml(this.userName)} (You) - ${selfRole}</span>
@@ -1228,12 +1277,12 @@ class ProctoringApp {
             </div>`;
             
             this.participants.forEach((participant, peerId) => {
-                const role = participant.type === 'proctor' ? 'Lecturer' : 'Student';
+                const role = this.roleLabel(participant.type);
                 const media = participant.mediaState || {};
                 const micIcon = media.audio === false ? 'fa-microphone-slash off' : 'fa-microphone';
                 const cameraOff = media.video === false || media.camera === false;
                 const cameraIcon = cameraOff ? 'fa-video-slash off' : 'fa-video';
-                html += `<div class="participant clickable" data-peer-id="${this.escapeHtml(peerId)}" role="button" tabindex="0" title="Zoom in on ${this.escapeHtml(participant.name)}">
+                html += `<div class="participant clickable" data-peer-id="${this.escapeAttr(peerId)}" data-name="${this.escapeAttr(participant.name)}" data-hand="${participant.handRaised ? 1 : 0}" data-camera="${cameraOff ? 0 : 1}" role="button" tabindex="0" title="Zoom in on ${this.escapeAttr(participant.name)}">
                     <i class="fas fa-user${participant.type === 'proctor' ? '-shield' : ''}"></i>
                     <span>${this.escapeHtml(participant.name)} - ${role}</span>
                     <span class="participant-media">
@@ -1246,6 +1295,10 @@ class ProctoringApp {
             });
             
             participantList.innerHTML = html;
+            
+            const rosterCount = document.getElementById('rosterCount');
+            if (rosterCount) rosterCount.textContent = this.participants.size;
+            this.applyRosterFilter();
         }
         
         const remoteVideosTitle = document.getElementById('remoteVideosTitle');
@@ -2721,6 +2774,76 @@ class ProctoringApp {
         }
     }
     
+    joinFromStudentCard(mode) {
+        const roomInput = document.getElementById('studentRoomId');
+        const nameInput = document.getElementById('studentName');
+        const roomId = roomInput ? roomInput.value.trim().toUpperCase() : '';
+        const name = nameInput ? nameInput.value.trim() : '';
+        
+        if (!roomId) {
+            this.showMessage('❌ Please enter the session ID', 'error');
+            if (roomInput) {
+                roomInput.classList.add('input-error');
+                roomInput.focus();
+            }
+            return;
+        }
+        if (roomInput) roomInput.classList.remove('input-error');
+        
+        if (!name) {
+            this.showMessage('❌ Please enter your name', 'error');
+            if (nameInput) {
+                nameInput.classList.add('input-error');
+                nameInput.focus();
+            }
+            return;
+        }
+        if (nameInput) nameInput.classList.remove('input-error');
+        
+        this.roomId = roomId;
+        document.getElementById('joinRoomId').value = roomId;
+        document.getElementById('joinUserName').value = name;
+        this.confirmJoin(mode);
+    }
+    
+    setRosterFilter(filter) {
+        this.rosterFilter = filter || 'all';
+        document.querySelectorAll('#studentFilters .filter-chip').forEach(chip => {
+            chip.classList.toggle('active', chip.dataset.filter === this.rosterFilter);
+        });
+        this.applyRosterFilter();
+    }
+    
+    setRosterSearch(value) {
+        this.rosterSearch = value || '';
+        this.applyRosterFilter();
+    }
+    
+    applyRosterFilter() {
+        const rows = document.querySelectorAll('#participantList .participant[data-peer-id]');
+        const query = (this.rosterSearch || '').trim().toLowerCase();
+        let visible = 0;
+        
+        rows.forEach(row => {
+            const handRaised = row.dataset.hand === '1';
+            const cameraOff = row.dataset.camera === '0';
+            let show = true;
+            
+            if (this.rosterFilter === 'hands') show = handRaised;
+            else if (this.rosterFilter === 'camera-off') show = cameraOff;
+            
+            if (show && query) {
+                show = (row.dataset.name || '').toLowerCase().includes(query);
+            }
+            
+            row.classList.toggle('filtered-out', !show);
+            if (show) visible += 1;
+        });
+        
+        const empty = document.getElementById('rosterEmpty');
+        if (empty) empty.classList.toggle('hidden', visible > 0 || rows.length === 0);
+    }
+    
     setPeerStatus(peerId, text) {
         const statusEl = document.getElementById(`remoteStatus-${peerId}`);
         if (statusEl) statusEl.textContent = text;
@@ -3729,6 +3852,14 @@ class ProctoringApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    escapeAttr(text) {
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
     
     copyLink() {

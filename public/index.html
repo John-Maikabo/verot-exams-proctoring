@@ -3,389 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	
-	   <!-- Add these meta tags to bypass ngrok warning -->
-    <meta name="ngrok-skip-browser-warning" content="any-value">
-    <meta name="referrer" content="no-referrer">
-	
-	
     <title>Verot Exams Proctoring</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/portal.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body>
-    <div class="container">
-        <header>
+<body class="portal landing-page">
+    <header class="portal-header landing-header">
+        <div class="brand">
             <h1><i class="fas fa-graduation-cap"></i> Verot Exams Proctoring</h1>
-            <div class="status">
-                <span class="status-indicator" id="statusIndicator"></span>
-                <span id="statusText">Disconnected</span>
-            </div>
-        </header>
+            <p class="brand-sub">Secure online invigilation</p>
+        </div>
+        <a class="portal-link" href="https://github.com/John-Maikabo/verot-exams-proctoring" target="_blank" rel="noopener">
+            <i class="fas fa-code-branch"></i> Source
+        </a>
+    </header>
 
-        <main class="main-content">
-            <!-- Left Panel - Controls -->
-            <div class="panel connection-panel">
-                <h2><i class="fas fa-plug"></i> Connection</h2>
-                
-                <div class="form-group">
-                    <label for="userName"><i class="fas fa-user"></i> Your Name: <span class="required-star">*</span></label>
-                    <input type="text" id="userName" placeholder="Enter your name" value="" required>
-                </div>
-                
-                <div class="form-group" id="sessionDescriptionGroup">
-                    <label for="sessionDescription"><i class="fas fa-align-left"></i> Session Description: <span class="required-star">*</span></label>
-                    <textarea id="sessionDescription" rows="3" maxlength="300" required placeholder="What is this class about? Students will see this."></textarea>
-                    <p class="form-hint">Required — students see this before joining.</p>
-                </div>
-                
-                <div class="button-group">
-                    <button id="createRoomBtn" class="btn btn-primary">
-                        <i class="fas fa-plus-circle"></i> Create New Session
-                    </button>
-                    <button id="joinRoomBtn" class="btn btn-secondary hidden">
-                        <i class="fas fa-sign-in-alt"></i> Join Session
-                    </button>
-                    <button id="rejoinRoomBtn" class="btn btn-secondary hidden">
-                        <i class="fas fa-redo-alt"></i> Rejoin Session
-                    </button>
-                </div>
-                
-                <!-- Session Info -->
-                <details id="roomInfo" class="collapsible hidden" open>
-                    <summary>
-                        <span class="summary-label"><i class="fas fa-info-circle"></i> Session Info</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </summary>
-                    <div class="collapsible-body">
-                        <div class="info-box">
-                            <p><strong>Session ID:</strong> <span id="roomIdDisplay">-</span></p>
-                            <p><strong>Participants:</strong> <span id="participantCount">0</span>/10</p>
-                            <p><strong>Your Role:</strong> <span id="userRole">-</span></p>
-                            <p><strong>Your Name:</strong> <span id="displayUserName">-</span></p>
-                        </div>
-                        
-                        <div class="session-description-box">
-                            <h4><i class="fas fa-align-left"></i> About this session</h4>
-                            <p id="roomDescriptionDisplay">No description provided.</p>
-                        </div>
-                        
-                        <!-- Share Link -->
-                        <div class="share-section">
-                            <h4><i class="fas fa-share-alt"></i> Share Session Link</h4>
-                            <div class="share-box">
-                                <input type="text" id="shareLink" readonly>
-                                <button id="copyLinkBtn" class="btn btn-primary">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                            </div>
-                            <div class="share-buttons">
-                                <button id="shareWhatsAppBtn" class="btn btn-whatsapp">
-                                    <i class="fab fa-whatsapp"></i> WhatsApp
-                                </button>
-                                <button id="shareEmailBtn" class="btn btn-email">
-                                    <i class="fas fa-envelope"></i> Email
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </details>
-                
-                <!-- Participant List -->
-                <details class="collapsible hidden" id="participantListContainer" open>
-                    <summary>
-                        <span class="summary-label"><i class="fas fa-users"></i> Participants</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </summary>
-                    <div class="collapsible-body">
-                        <div id="participantList"></div>
-                    </div>
-                </details>
-                
-                <!-- Media Controls -->
-                <details class="collapsible hidden" id="mediaControls" open>
-                    <summary>
-                        <span class="summary-label"><i class="fas fa-sliders-h"></i> Media Controls</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </summary>
-                    <div class="collapsible-body">
-                        <div class="form-group media-option">
-                            <label for="backgroundSelect"><i class="fas fa-image"></i> Video Background:</label>
-                            <select id="backgroundSelect">
-                                <option value="none">None</option>
-                                <option value="blur">Blur</option>
-                                <option value="gradient-violet">Soft violet</option>
-                                <option value="gradient-ocean">Ocean blue</option>
-                                <option value="gradient-sunset">Warm sunset</option>
-                                <option value="gradient-studio">Dark studio</option>
-                            </select>
-                        </div>
-                        <button id="startCallBtn" class="btn btn-start">
-                            <i class="fas fa-video"></i> Start Camera &amp; Microphone
-                        </button>
-                        <div class="control-buttons">
-                            <button id="endCallBtn" class="btn btn-danger" disabled>
-                                <i class="fas fa-phone-slash"></i> End Session
-                            </button>
-                            <button id="toggleAudioBtn" class="btn btn-warning" disabled>
-                                <i class="fas fa-microphone"></i> Mute Audio
-                            </button>
-                            <button id="toggleVideoBtn" class="btn btn-warning" disabled>
-                                <i class="fas fa-video"></i> Hide Video
-                            </button>
-                        </div>
-                    </div>
-                </details>
-                
-                <!-- Classroom interaction -->
-                <details class="collapsible hidden" id="classroomControls" open>
-                    <summary>
-                        <span class="summary-label"><i class="fas fa-hands"></i> Classroom</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </summary>
-                    <div class="collapsible-body">
-                        <div class="reaction-bar">
-                            <span class="reaction-label"><i class="fas fa-face-smile"></i> React:</span>
-                            <button class="btn btn-reaction reaction-btn" data-emoji="👍" title="Thumbs up" disabled>👍</button>
-                            <button class="btn btn-reaction reaction-btn" data-emoji="👏" title="Applause" disabled>👏</button>
-                            <button class="btn btn-reaction reaction-btn" data-emoji="❓" title="Question" disabled>❓</button>
-                            <button class="btn btn-reaction reaction-btn" data-emoji="😮" title="Surprised" disabled>😮</button>
-                        </div>
-                        <button id="raiseHandBtn" class="btn btn-hand" disabled>
-                            <i class="fas fa-hand-paper"></i> Raise Hand
-                        </button>
-                    </div>
-                </details>
-                
-                <!-- Session Tools -->
-                <details class="collapsible hidden" id="proctoringControls">
-                    <summary>
-                        <span class="summary-label"><i class="fas fa-toolbox"></i> Session Tools</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </summary>
-                    <div class="collapsible-body">
-                        <div class="tool-buttons">
-                            <button id="screenShareBtn" class="btn btn-warning" disabled>
-                                <i class="fas fa-desktop"></i> Share Screen
-                            </button>
-                            <button id="recordBtn" class="btn btn-info" disabled>
-                                <i class="fas fa-circle"></i> Start Recording
-                            </button>
-                            <button id="snapshotBtn" class="btn btn-info" disabled>
-                                <i class="fas fa-camera"></i> Take Snapshot
-                            </button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-            
-            <!-- Right Panel - Videos & Tools -->
-            <div class="panel video-panel">
-                <div class="console-bar">
-                    <h2><i class="fas fa-shield-halved"></i> Invigilation Console</h2>
-                    <div class="console-stats">
-                        <span class="console-stat">
-                            <i class="fas fa-user-graduate"></i> <strong id="statStudents">0</strong> students
-                        </span>
-                        <span class="console-stat">
-                            <i class="fas fa-video"></i> <strong id="statCameras">0</strong> on camera
-                        </span>
-                        <span class="console-stat console-stat-alert">
-                            <i class="fas fa-hand-paper"></i> <strong id="statHands">0</strong> hands
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="video-content" id="videoContent">
-                    <!-- Shared screen takes over this stage -->
-                    <div id="presentationStage" class="presentation-stage hidden">
-                        <div class="presentation-bar">
-                            <span><i class="fas fa-desktop"></i> <span id="presentationLabel">Screen sharing</span></span>
-                        </div>
-                        <video id="presentationVideo" autoplay playsinline muted></video>
-                    </div>
-                    
-                    <div class="participant-rail" id="participantRail">
-                        <!-- Local Video - ALWAYS VISIBLE -->
-                        <div class="video-container" id="localVideoContainer">
-                            <div class="video-header">
-                                <h3><i class="fas fa-user"></i> <span id="localName">You</span> (<span id="localRole">-</span>)</h3>
-                                <div class="video-stats">
-                                    <span><i class="fas fa-microphone"></i> <span id="audioStatus">On</span></span>
-                                    <span><i class="fas fa-video"></i> <span id="videoStatus">On</span></span>
-                                </div>
-                            </div>
-                            <video id="localVideo" autoplay playsinline muted></video>
-                            <div class="video-placeholder" id="localVideoPlaceholder">
-                                <i class="fas fa-user"></i>
-                                <span id="localPlaceholderText">Camera off</span>
-                            </div>
-                            <div class="hand-badge hidden" id="localHandBadge">
-                                <i class="fas fa-hand-paper"></i> Hand raised
-                            </div>
-                            <div class="reaction-layer" id="reactionLayer-local"></div>
-                            <div class="video-status">
-                                <i class="fas fa-signal"></i> <span id="localStatus">Camera off</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Remote Videos Container -->
-                        <div id="remoteVideosTitle" class="hidden">
-                            <h3><i class="fas fa-users"></i> Students</h3>
-                            <span class="console-hint"><i class="fas fa-magnifying-glass-plus"></i> Click a student to zoom in</span>
-                        </div>
-                        <div id="remoteVideosContainer" class="video-grid-container">
-                            <!-- Remote videos will be added here dynamically -->
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Chat (For Everyone) -->
-                <div class="chat-panel hidden" id="chatPanel">
-                    <h2><i class="fas fa-comments"></i> Chat</h2>
-                    <div id="chatMessages" class="chat-messages">
-                        <div class="chat-message system">
-                            <div class="chat-sender">System <span class="chat-time" id="currentTime"></span></div>
-                            <div class="chat-text">Welcome to the class</div>
-                        </div>
-                    </div>
-                    <div class="chat-input">
-                        <input type="text" id="chatInput" placeholder="Type your message...">
-                        <button id="sendChatBtn" class="btn btn-primary">
-                            <i class="fas fa-paper-plane"></i> Send
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </main>
-        
-        <!-- Student Zoom (spotlight) -->
-        <div id="studentZoom" class="zoom-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="zoomName">
-            <div class="zoom-shell">
-                <div class="zoom-toolbar">
-                    <div class="zoom-identity">
-                        <h3 id="zoomName"><i class="fas fa-user"></i> Student</h3>
-                        <div class="zoom-chips">
-                            <span class="zoom-chip" id="zoomMicChip"><i class="fas fa-microphone"></i> Mic on</span>
-                            <span class="zoom-chip" id="zoomCamChip"><i class="fas fa-video"></i> Camera on</span>
-                            <span class="zoom-chip zoom-chip-alert hidden" id="zoomHandChip"><i class="fas fa-hand-paper"></i> Hand raised</span>
-                        </div>
-                    </div>
-                    <div class="zoom-actions">
-                        <button id="zoomPrevBtn" class="btn btn-secondary zoom-icon-btn" title="Previous student (←)">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <button id="zoomNextBtn" class="btn btn-secondary zoom-icon-btn" title="Next student (→)">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                        <div class="zoom-levels" id="zoomLevels" role="group" aria-label="Zoom level">
-                            <button type="button" class="zoom-level active" data-scale="1">1x</button>
-                            <button type="button" class="zoom-level" data-scale="2">2x</button>
-                            <button type="button" class="zoom-level" data-scale="3">3x</button>
-                        </div>
-                        <button id="zoomFullscreenBtn" class="btn btn-secondary zoom-icon-btn" title="Fullscreen">
-                            <i class="fas fa-expand"></i>
-                        </button>
-                        <button id="zoomCloseBtn" class="btn btn-danger zoom-icon-btn" title="Back to all students (Esc)">
-                            <i class="fas fa-xmark"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="zoom-stage" id="zoomStage">
-                    <video id="zoomVideo" autoplay playsinline></video>
-                    <div class="video-placeholder hidden" id="zoomPlaceholder">
-                        <i class="fas fa-user"></i>
-                        <span id="zoomPlaceholderText">Camera off</span>
-                    </div>
-                    <div class="hand-badge hidden" id="zoomHandBadge"><i class="fas fa-hand-paper"></i> Hand raised</div>
-                </div>
-                <div class="zoom-footer">
-                    <span class="zoom-position" id="zoomPosition">Student 1 of 1</span>
-                    <div class="zoom-strip" id="zoomStrip"></div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Join Modal -->
-        <div id="joinModal" class="modal hidden">
-            <div class="modal-content">
-                <h2><i class="fas fa-sign-in-alt"></i> Join Class</h2>
-                <div class="form-group">
-                    <label for="joinRoomId">Session ID:</label>
-                    <input type="text" id="joinRoomId" placeholder="Enter session ID" value="">
-                </div>
-                <div class="form-group">
-                    <label for="joinUserName">Your Name: <span class="required-star">*</span></label>
-                    <input type="text" id="joinUserName" placeholder="Enter your name" value="" required>
-                </div>
-                <p class="form-hint">
-                    <i class="fas fa-circle-info"></i>
-                    Choose how to join. If you join with audio only, you can start your camera later from Media Controls.
-                </p>
-                <div class="join-mode-buttons">
-                    <button id="joinWithCameraBtn" class="btn btn-success">
-                        <i class="fas fa-video"></i> Join with Camera
-                    </button>
-                    <button id="joinWithAudioBtn" class="btn btn-secondary">
-                        <i class="fas fa-microphone"></i> Join with Audio Only
-                    </button>
-                </div>
-                <div class="modal-buttons">
-                    <button id="cancelJoinBtn" class="btn btn-secondary">Cancel</button>
-                </div>
-            </div>
-        </div>
-        
-        <footer>
-            <p><i class="fas fa-code"></i> Verot Exams Proctoring | Screen Sharing for Lectures</p>
-            <p class="disclaimer">
-                <i class="fas fa-exclamation-triangle"></i> This class may be recorded for learning purposes.
-            </p>
-        </footer>
-    </div>
+    <main class="landing">
+        <section class="landing-hero">
+            <p class="eyebrow">Exam session access</p>
+            <h1>Which side of the desk are you on?</h1>
+            <p>Invigilators create a session and monitor every candidate live. Students join with the session ID or the link their invigilator shared.</p>
+        </section>
+
+        <section class="role-cards">
+            <a class="role-card proctor" href="proctor.html">
+                <span class="role-icon"><i class="fas fa-shield-halved"></i></span>
+                <h2>Invigilator</h2>
+                <p>Start an exam session, watch all candidates in one grid, zoom into any student, and use snapshots, recording, and screen sharing.</p>
+                <span class="role-cta">Open invigilation console <i class="fas fa-arrow-right"></i></span>
+            </a>
+            <a class="role-card student" href="student.html">
+                <span class="role-icon"><i class="fas fa-user-graduate"></i></span>
+                <h2>Student</h2>
+                <p>Join a session with your camera or audio only, see your invigilator and classmates, and raise your hand when you need attention.</p>
+                <span class="role-cta">Join an exam session <i class="fas fa-arrow-right"></i></span>
+            </a>
+        </section>
+
+        <p class="landing-note">
+            <i class="fas fa-circle-info"></i>
+            Joining links sent by an invigilator open the student portal with the session already filled in.
+        </p>
+    </main>
+
+    <footer>
+        <p><i class="fas fa-lock"></i> Verot Exams Proctoring</p>
+        <p class="disclaimer">
+            <i class="fas fa-exclamation-triangle"></i> Sessions may be recorded for exam integrity purposes.
+        </p>
+    </footer>
 
     <script>
-        // Update current time in chat
-        function updateCurrentTime() {
-            const now = new Date();
-            const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const timeElement = document.getElementById('currentTime');
-            if (timeElement) {
-                timeElement.textContent = timeString;
-            }
+        // Old-style share links (/?room=ABC&type=candidate) land on the student portal
+        const params = new URLSearchParams(window.location.search);
+        const room = params.get('room');
+        if (room) {
+            location.replace('student.html?room=' + encodeURIComponent(room));
         }
-        
-        // Update time every minute
-        updateCurrentTime();
-        setInterval(updateCurrentTime, 60000);
-        
-        // Auto-populate room ID from URL
-        window.addEventListener('load', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomId = urlParams.get('room');
-            const userType = urlParams.get('type');
-            
-            // Set default names based on type
-            const userNameInput = document.getElementById('userName');
-            if (userNameInput) {
-                if (userType === 'proctor') {
-                    userNameInput.value = 'Lecturer';
-                } else if (userType === 'candidate') {
-                    userNameInput.value = 'Student';
-                }
-            }
-            
-            // If room ID is in URL, auto-populate join modal
-            if (roomId) {
-                const joinRoomIdInput = document.getElementById('joinRoomId');
-                if (joinRoomIdInput) {
-                    joinRoomIdInput.value = roomId;
-                }
-            }
-            
-            console.log('Page loaded with room:', roomId, 'type:', userType);
-        });
     </script>
-    <script src="js/main.js"></script>
 </body>
 </html>
