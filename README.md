@@ -1,4 +1,4 @@
-# Zed Stream
+# Verot Exams Proctoring
 
 WebRTC proctoring sessions: a proctor creates a room, shares the link, and candidates join a mesh video call with chat, screen sharing, and snapshot capture.
 

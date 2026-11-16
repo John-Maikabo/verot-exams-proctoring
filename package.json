@@ -1,7 +1,7 @@
 {
   "name": "proctoring-webrtc-server",
   "version": "1.0.0",
-  "description": "Zed Stream signaling server for WebRTC proctoring sessions",
+  "description": "Verot Exams Proctoring signaling server for WebRTC proctoring sessions",
   "main": "server.js",
   "engines": {
     "node": ">=18"

@@ -3754,16 +3754,16 @@ class ProctoringApp {
         const link = document.getElementById('shareLink')?.value;
         if (!link) return;
         const description = this.roomDescription ? `${this.roomDescription}\n\n` : '';
-        const text = encodeURIComponent(`Join the Zed Stream session:\n${description}${link}`);
+        const text = encodeURIComponent(`Join the Verot Exams Proctoring session:\n${description}${link}`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
     }
     
     shareEmail() {
         const link = document.getElementById('shareLink')?.value;
         if (!link) return;
-        const subject = encodeURIComponent('Join Zed Stream Session');
+        const subject = encodeURIComponent('Join Verot Exams Proctoring Session');
         const description = this.roomDescription ? `${this.roomDescription}\n\n` : '';
-        const body = encodeURIComponent(`You are invited to join the Zed Stream session.\n\n${description}Click the link below to join:\n${link}`);
+        const body = encodeURIComponent(`You are invited to join the Verot Exams Proctoring session.\n\n${description}Click the link below to join:\n${link}`);
         window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
     }
     
