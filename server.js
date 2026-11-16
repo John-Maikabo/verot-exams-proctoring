@@ -5,8 +5,19 @@ const WebSocket = require('ws');
 const path = require('path');
 const twilio = require('twilio');  // Add Twilio for TURN servers
 const { ExamStore, httpError } = require('./lib/exam-store');
+const {
+    AuthStore,
+    PERMISSIONS,
+    REFERRAL_OPTIONS,
+    hasPermission,
+    effectivePermissions,
+    publicUser,
+    publicStudent,
+    publicCompany
+} = require('./lib/auth-store');
 
 const examStore = new ExamStore();
+const authStore = new AuthStore();
 
 const app = express();
 app.set('trust proxy', 1);
@@ -16,6 +27,133 @@ const wss = new WebSocket.Server({ server });
 // Store active rooms and connections
 const rooms = new Map();
 const connections = new Map();
+
+const STAFF_COOKIE = 'verot_staff';
+const STUDENT_COOKIE = 'verot_student';
+const STAFF_SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+const STUDENT_SESSION_TTL = 12 * 60 * 60 * 1000;
+
+function sendApiError(res, error) {
+    const status = error.status || 500;
+    if (status >= 500) console.error('API error:', error);
+    res.status(status).json({ success: false, error: error.message || 'Request failed' });
+}
+
+const asyncRoute = (handler) => (req, res) => {
+    Promise.resolve(handler(req, res)).catch(error => sendApiError(res, error));
+};
+
+function readCookie(req, name) {
+    const header = req.headers.cookie;
+    if (!header) return '';
+    for (const part of header.split(';')) {
+        const index = part.indexOf('=');
+        if (index === -1) continue;
+        if (part.slice(0, index).trim() !== name) continue;
+        try {
+            return decodeURIComponent(part.slice(index + 1).trim());
+        } catch (error) {
+            return part.slice(index + 1).trim();
+        }
+    }
+    return '';
+}
+
+function setAuthCookie(req, res, name, token, maxAge) {
+    res.cookie(name, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: req.secure,
+        maxAge,
+        path: '/'
+    });
+}
+
+function clearAuthCookie(req, res, name) {
+    res.clearCookie(name, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: req.secure,
+        path: '/'
+    });
+}
+
+async function loadStaff(req) {
+    const token = readCookie(req, STAFF_COOKIE);
+    if (!token) return null;
+    const session = await authStore.getSession(token);
+    if (!session || session.kind !== 'staff') return null;
+    const user = await authStore.getUserById(session.subjectId);
+    if (!user || user.status !== 'active' || user.companyId !== session.companyId) return null;
+    const company = await authStore.getCompany(user.companyId);
+    if (!company) return null;
+    return { ...user, company, permissions: effectivePermissions(user) };
+}
+
+async function loadStudent(req) {
+    const token = readCookie(req, STUDENT_COOKIE);
+    if (!token) return null;
+    const session = await authStore.getSession(token);
+    if (!session || session.kind !== 'student') return null;
+    const student = await authStore.getStudentById(session.subjectId);
+    if (!student || student.companyId !== session.companyId) return null;
+    return student;
+}
+
+function staffPayload(staff) {
+    return {
+        kind: 'staff',
+        user: publicUser(staff),
+        company: publicCompany(staff.company),
+        permissions: effectivePermissions(staff),
+        isAdmin: staff.role === 'admin'
+    };
+}
+
+function requireStaff(permission) {
+    return (req, res, next) => {
+        if (!req.staff) {
+            return res.status(401).json({ success: false, error: 'Sign in to continue' });
+        }
+        if (permission && !hasPermission(req.staff, permission)) {
+            return res.status(403).json({
+                success: false,
+                error: 'Your access role does not allow this action'
+            });
+        }
+        next();
+    };
+}
+
+function requireAnyPermission(permissions) {
+    return (req, res, next) => {
+        if (!req.staff) {
+            return res.status(401).json({ success: false, error: 'Sign in to continue' });
+        }
+        if (!permissions.some(permission => hasPermission(req.staff, permission))) {
+            return res.status(403).json({
+                success: false,
+                error: 'Your access role does not allow this action'
+            });
+        }
+        next();
+    };
+}
+
+// Invigilator portal requires an institution account
+app.get('/proctor.html', async (req, res, next) => {
+    try {
+        const staff = await loadStaff(req);
+        if (!staff) {
+            const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+            const next = encodeURIComponent(`/proctor.html${query}`);
+            return res.redirect(`/login.html?next=${next}`);
+        }
+    } catch (error) {
+        console.error('Could not check portal session:', error.message);
+    }
+    next();
+});
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
@@ -27,7 +165,171 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '2mb' }));
+
+// Resolve cookie sessions once per request
+app.use(async (req, res, next) => {
+    try {
+        req.staff = await loadStaff(req);
+        req.student = await loadStudent(req);
+    } catch (error) {
+        console.error('Could not resolve session:', error.message);
+    }
+    next();
+});
+
+// ==================== ACCOUNT AND TEAM API ====================
+
+const loginAttempts = new Map();
+const LOGIN_WINDOW = 10 * 60 * 1000;
+const LOGIN_LIMIT = 10;
+
+function loginLimitKey(req, email) {
+    return `${req.ip}:${email}`;
+}
+
+function loginLimitExceeded(key) {
+    const record = loginAttempts.get(key);
+    if (!record) return false;
+    if (record.resetAt <= Date.now()) {
+        loginAttempts.delete(key);
+        return false;
+    }
+    return record.count >= LOGIN_LIMIT;
+}
+
+function recordLoginFailure(key) {
+    const now = Date.now();
+    let record = loginAttempts.get(key);
+    if (!record || record.resetAt <= now) {
+        record = { count: 0, resetAt: now + LOGIN_WINDOW };
+    }
+    record.count += 1;
+    loginAttempts.set(key, record);
+}
+
+app.get('/api/auth/options', (req, res) => {
+    res.json({
+        success: true,
+        referrals: REFERRAL_OPTIONS,
+        permissions: PERMISSIONS
+    });
+});
+
+app.post('/api/auth/register', asyncRoute(async (req, res) => {
+    const { company, user } = await authStore.register(req.body || {});
+    const token = await authStore.createSession('staff', user.id, company.id, STAFF_SESSION_TTL);
+    setAuthCookie(req, res, STAFF_COOKIE, token, STAFF_SESSION_TTL);
+    res.status(201).json({ success: true, ...staffPayload({ ...user, company }) });
+}));
+
+app.post('/api/auth/login', asyncRoute(async (req, res) => {
+    const body = req.body || {};
+    const email = (body.email || '').toString().trim().toLowerCase();
+    const limitKey = loginLimitKey(req, email);
+    if (loginLimitExceeded(limitKey)) {
+        throw httpError(429, 'Too many sign-in attempts. Try again in a few minutes.');
+    }
+
+    let result;
+    try {
+        result = await authStore.login(email, body.password);
+    } catch (error) {
+        recordLoginFailure(limitKey);
+        throw error;
+    }
+    loginAttempts.delete(limitKey);
+
+    const token = await authStore.createSession('staff', result.user.id, result.company.id, STAFF_SESSION_TTL);
+    setAuthCookie(req, res, STAFF_COOKIE, token, STAFF_SESSION_TTL);
+    res.json({ success: true, ...staffPayload({ ...result.user, company: result.company }) });
+}));
+
+app.post('/api/auth/logout', asyncRoute(async (req, res) => {
+    const token = readCookie(req, STAFF_COOKIE);
+    if (token) await authStore.deleteSession(token);
+    clearAuthCookie(req, res, STAFF_COOKIE);
+    res.json({ success: true });
+}));
+
+app.get('/api/auth/me', asyncRoute(async (req, res) => {
+    if (req.staff) {
+        return res.json({ success: true, ...staffPayload(req.staff) });
+    }
+    if (req.student) {
+        const company = await authStore.getCompany(req.student.companyId);
+        return res.json({
+            success: true,
+            kind: 'student',
+            student: publicStudent(req.student),
+            company: company ? publicCompany(company) : null
+        });
+    }
+    res.status(401).json({ success: false, error: 'Not signed in' });
+}));
+
+app.get('/api/team', requireStaff('users'), asyncRoute(async (req, res) => {
+    const users = await authStore.listTeam(req.staff.companyId);
+    res.json({ success: true, users, selfId: req.staff.id });
+}));
+
+app.post('/api/team', requireStaff('users'), asyncRoute(async (req, res) => {
+    const user = await authStore.createTeamUser(req.staff, req.body || {});
+    res.status(201).json({ success: true, user });
+}));
+
+app.patch('/api/team/:id', requireStaff('users'), asyncRoute(async (req, res) => {
+    const user = await authStore.updateTeamUser(req.staff, req.params.id, req.body || {});
+    res.json({ success: true, user });
+}));
+
+app.delete('/api/team/:id', requireStaff('users'), asyncRoute(async (req, res) => {
+    await authStore.deleteTeamUser(req.staff, req.params.id);
+    res.json({ success: true });
+}));
+
+app.get('/api/students', requireStaff('students'), asyncRoute(async (req, res) => {
+    const students = await authStore.listStudents(req.staff.companyId, req.query.search);
+    res.json({ success: true, students, count: students.length });
+}));
+
+app.post('/api/students/import', requireStaff('students'), asyncRoute(async (req, res) => {
+    const summary = await authStore.importStudents(req.staff.companyId, req.body && req.body.students);
+    res.json({ success: true, summary });
+}));
+
+app.delete('/api/students/:id', requireStaff('students'), asyncRoute(async (req, res) => {
+    await authStore.deleteStudent(req.staff.companyId, req.params.id);
+    res.json({ success: true });
+}));
+
+// Students prove they are on an institution's register before joining its rooms
+app.post('/api/rooms/:roomId/student-session', asyncRoute(async (req, res) => {
+    const room = rooms.get(req.params.roomId);
+    if (!room) throw httpError(404, 'Room not found');
+    if (!room.companyId) throw httpError(409, 'This session is not linked to an institution');
+
+    const body = req.body || {};
+    const student = await authStore.verifyStudent(room.companyId, body.studentNumber, body.email);
+    const token = await authStore.createSession('student', student.id, room.companyId, STUDENT_SESSION_TTL);
+    setAuthCookie(req, res, STUDENT_COOKIE, token, STUDENT_SESSION_TTL);
+    res.json({
+        success: true,
+        student: publicStudent(student),
+        room: {
+            roomId: room.id,
+            description: room.description || '',
+            companyName: room.companyName || ''
+        }
+    });
+}));
+
+app.post('/api/student/logout', asyncRoute(async (req, res) => {
+    const token = readCookie(req, STUDENT_COOKIE);
+    if (token) await authStore.deleteSession(token);
+    clearAuthCookie(req, res, STUDENT_COOKIE);
+    res.json({ success: true });
+}));
 
 // ==================== TWILIO TURN ENDPOINTS ====================
 
@@ -163,43 +465,37 @@ app.get('/api/test-turn', async (req, res) => {
 
 // ==================== ROOM MANAGEMENT API ====================
 
-// API endpoint to create a room (only for proctors)
-app.get('/api/create-room', (req, res) => {
+// API endpoint to create a room (invigilators only)
+app.get('/api/create-room', requireStaff('invigilation'), (req, res) => {
     const roomId = generateRoomId();
-    const userId = req.query.userId || generateUserId();
-    const userName = (req.query.name || '').toString().trim().slice(0, 60);
+    const userName = req.staff.name;
     const description = (req.query.description || '').toString().trim().slice(0, 300);
-    
-    if (!userName) {
-        return res.status(400).json({
-            success: false,
-            error: 'Your name is required'
-        });
-    }
-    
+
     if (!description) {
         return res.status(400).json({
             success: false,
             error: 'A session description is required'
         });
     }
-    
+
     rooms.set(roomId, {
         id: roomId,
         participants: new Map(),
         createdAt: Date.now(),
-        proctor: userId,
+        proctor: req.staff.id,
+        companyId: req.staff.companyId,
+        companyName: req.staff.company.name,
         maxParticipants: 10,
         description: description,
         isActive: false
     });
-    
-    const roomLink = `${req.protocol}://${req.get('host')}/student.html?room=${roomId}&type=candidate`;
-    
+
+    const roomLink = `${req.protocol}://${req.get('host')}/student.html?room=${roomId}`;
+
     res.json({
         success: true,
         roomId: roomId,
-        userId: userId,
+        userId: req.staff.id,
         userName: userName,
         description: description,
         link: roomLink,
@@ -214,22 +510,29 @@ app.get('/api/room/:roomId', (req, res) => {
     if (!room) {
         return res.status(404).json({ error: 'Room not found' });
     }
-    
-    const participants = Array.from(room.participants.values()).map(p => ({
-        id: p.userId,
-        type: p.userType,
-        name: p.userName,
-        isScreenSharing: p.isScreenSharing || false,
-        handRaised: !!p.handRaised
-    }));
-    
+
+    const staffAuthorized = !!(req.staff && req.staff.companyId === room.companyId);
+    const studentAuthorized = !!(req.student && req.student.companyId === room.companyId);
+    const canSeeRoster = staffAuthorized || studentAuthorized;
+
+    const participants = staffAuthorized
+        ? Array.from(room.participants.values()).map(p => ({
+            id: p.userId,
+            type: p.userType,
+            name: p.userName,
+            isScreenSharing: p.isScreenSharing || false,
+            handRaised: !!p.handRaised
+        }))
+        : [];
+
     res.json({
         roomId: room.id,
-        proctor: room.proctor,
         description: room.description || '',
+        companyName: room.companyName || '',
         participants: participants,
-        participantCount: room.participants.size,
+        participantCount: canSeeRoster ? room.participants.size : 0,
         maxParticipants: room.maxParticipants,
+        examStatus: room.exam ? room.exam.status : null,
         isActive: room.isActive,
         createdAt: room.createdAt
     });
@@ -241,12 +544,13 @@ app.get('/api/validate-room/:roomId', (req, res) => {
     if (!room) {
         return res.status(404).json({ error: 'Room not found' });
     }
-    
+
     res.json({
         roomId: room.id,
         exists: true,
-        proctor: room.proctor,
-        description: room.description || ''
+        description: room.description || '',
+        companyName: room.companyName || '',
+        examStatus: room.exam ? room.exam.status : null
     });
 });
 
@@ -258,55 +562,46 @@ app.get('/health', (req, res) => {
         rooms: rooms.size,
         connections: connections.size,
         storage: examStore.storageName,
+        accounts: authStore.storageName,
         uptime: process.uptime()
     });
 });
 
 // ==================== QUESTION BANK API ====================
 
-function sendApiError(res, error) {
-    const status = error.status || 500;
-    if (status >= 500) console.error('API error:', error);
-    res.status(status).json({ success: false, error: error.message || 'Request failed' });
-}
-
-const asyncRoute = (handler) => (req, res) => {
-    Promise.resolve(handler(req, res)).catch(error => sendApiError(res, error));
-};
-
-app.get('/api/questions', asyncRoute(async (req, res) => {
+app.get('/api/questions', requireAnyPermission(['questions', 'quizzes']), asyncRoute(async (req, res) => {
     const [questions, subjects] = await Promise.all([
-        examStore.listQuestions({
+        examStore.listQuestions(req.staff.companyId, {
             subject: req.query.subject,
             type: req.query.type,
             search: req.query.search
         }),
-        examStore.listSubjects()
+        examStore.listSubjects(req.staff.companyId)
     ]);
     res.json({ success: true, questions, subjects, storage: examStore.storageName });
 }));
 
-app.get('/api/questions/subjects', asyncRoute(async (req, res) => {
-    res.json({ success: true, subjects: await examStore.listSubjects() });
+app.get('/api/questions/subjects', requireAnyPermission(['questions', 'quizzes']), asyncRoute(async (req, res) => {
+    res.json({ success: true, subjects: await examStore.listSubjects(req.staff.companyId) });
 }));
 
-app.post('/api/questions', asyncRoute(async (req, res) => {
-    const question = await examStore.createQuestion(req.body || {});
+app.post('/api/questions', requireStaff('questions'), asyncRoute(async (req, res) => {
+    const question = await examStore.createQuestion(req.staff.companyId, req.body || {});
     res.status(201).json({ success: true, question });
 }));
 
-app.put('/api/questions/:id', asyncRoute(async (req, res) => {
-    const question = await examStore.updateQuestion(req.params.id, req.body || {});
+app.put('/api/questions/:id', requireStaff('questions'), asyncRoute(async (req, res) => {
+    const question = await examStore.updateQuestion(req.staff.companyId, req.params.id, req.body || {});
     res.json({ success: true, question });
 }));
 
-app.delete('/api/questions/:id', asyncRoute(async (req, res) => {
-    const examsChanged = await examStore.deleteQuestion(req.params.id);
+app.delete('/api/questions/:id', requireStaff('questions'), asyncRoute(async (req, res) => {
+    const examsChanged = await examStore.deleteQuestion(req.staff.companyId, req.params.id);
     res.json({ success: true, examsChanged });
 }));
 
-app.get('/api/exams', asyncRoute(async (req, res) => {
-    const exams = await examStore.listExams();
+app.get('/api/exams', requireAnyPermission(['quizzes', 'invigilation']), asyncRoute(async (req, res) => {
+    const exams = await examStore.listExams(req.staff.companyId);
     res.json({
         success: true,
         exams: exams.map(exam => ({
@@ -317,23 +612,23 @@ app.get('/api/exams', asyncRoute(async (req, res) => {
     });
 }));
 
-app.post('/api/exams', asyncRoute(async (req, res) => {
-    const exam = await examStore.createExam(req.body || {});
+app.post('/api/exams', requireStaff('quizzes'), asyncRoute(async (req, res) => {
+    const exam = await examStore.createExam(req.staff.companyId, req.body || {});
     res.status(201).json({ success: true, exam });
 }));
 
-app.get('/api/exams/:id', asyncRoute(async (req, res) => {
-    const exam = await examStore.getExam(req.params.id, { resolveQuestions: true });
+app.get('/api/exams/:id', requireAnyPermission(['quizzes', 'invigilation']), asyncRoute(async (req, res) => {
+    const exam = await examStore.getExam(req.staff.companyId, req.params.id, { resolveQuestions: true });
     res.json({ success: true, exam });
 }));
 
-app.put('/api/exams/:id', asyncRoute(async (req, res) => {
-    const exam = await examStore.updateExam(req.params.id, req.body || {});
+app.put('/api/exams/:id', requireStaff('quizzes'), asyncRoute(async (req, res) => {
+    const exam = await examStore.updateExam(req.staff.companyId, req.params.id, req.body || {});
     res.json({ success: true, exam });
 }));
 
-app.delete('/api/exams/:id', asyncRoute(async (req, res) => {
-    await examStore.deleteExam(req.params.id);
+app.delete('/api/exams/:id', requireStaff('quizzes'), asyncRoute(async (req, res) => {
+    await examStore.deleteExam(req.staff.companyId, req.params.id);
     res.json({ success: true });
 }));
 
@@ -459,24 +754,30 @@ function broadcastExamProgress(room) {
 app.get('/api/rooms/:roomId/exam', asyncRoute(async (req, res) => {
     const room = rooms.get(req.params.roomId);
     if (!room) throw httpError(404, 'Room not found');
-    const userId = (req.query.userId || '').toString();
-    const userType = userId && userId === room.proctor ? 'proctor' : 'candidate';
-    res.json({ success: true, exam: examPayloadFor(room, userType, userId) });
+
+    if (req.staff && room.proctor === req.staff.id) {
+        return res.json({ success: true, exam: examPayloadFor(room, 'proctor') });
+    }
+    if (req.student && req.student.companyId === room.companyId) {
+        return res.json({ success: true, exam: examPayloadFor(room, 'candidate', req.student.id) });
+    }
+    throw httpError(403, 'Verify your student details to open this exam');
 }));
 
-app.post('/api/rooms/:roomId/exam', asyncRoute(async (req, res) => {
+app.post('/api/rooms/:roomId/exam', requireStaff('invigilation'), asyncRoute(async (req, res) => {
     const room = rooms.get(req.params.roomId);
     if (!room) throw httpError(404, 'Room not found');
+    if (room.companyId !== req.staff.companyId) throw httpError(404, 'Room not found');
 
-    const { examId, userId } = req.body || {};
-    if (!userId || room.proctor !== userId) {
+    if (room.proctor !== req.staff.id) {
         throw httpError(403, 'Only the invigilator who created this session can deliver an exam');
     }
     if (room.exam && room.exam.status === 'live') {
         throw httpError(409, 'An exam is already live in this session. End it first.');
     }
 
-    const exam = await examStore.getExam(examId, { resolveQuestions: true });
+    const examId = (req.body && req.body.examId || '').toString();
+    const exam = await examStore.getExam(req.staff.companyId, examId, { resolveQuestions: true });
     if (!exam.resolvedQuestions.length) {
         throw httpError(400, 'Add at least one question to this exam before delivering it');
     }
@@ -494,12 +795,12 @@ app.post('/api/rooms/:roomId/exam', asyncRoute(async (req, res) => {
     res.json({ success: true, exam: examPayloadFor(room, 'proctor') });
 }));
 
-app.post('/api/rooms/:roomId/exam/end', asyncRoute(async (req, res) => {
+app.post('/api/rooms/:roomId/exam/end', requireStaff('invigilation'), asyncRoute(async (req, res) => {
     const room = rooms.get(req.params.roomId);
     if (!room) throw httpError(404, 'Room not found');
+    if (room.companyId !== req.staff.companyId) throw httpError(404, 'Room not found');
 
-    const { userId } = req.body || {};
-    if (!userId || room.proctor !== userId) {
+    if (room.proctor !== req.staff.id) {
         throw httpError(403, 'Only the invigilator who created this session can end the exam');
     }
     if (!room.exam || room.exam.status !== 'live') {
@@ -515,32 +816,71 @@ app.post('/api/rooms/:roomId/exam/end', asyncRoute(async (req, res) => {
 // ==================== WEBSOCKET SIGNALING ====================
 
 // WebSocket connection handling
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
     console.log('=== New WebSocket Connection ===');
     
     // Parse URL parameters
     const url = new URL(req.url, `http://${req.headers.host}`);
     const roomId = url.searchParams.get('room');
-    const userId = url.searchParams.get('userId') || generateUserId();
-    const userType = url.searchParams.get('type') || 'candidate';
-    const userName = url.searchParams.get('name') || (userType === 'proctor' ? 'Proctor' : `Candidate_${userId.substring(0, 4)}`);
-    
-    console.log('Connection details:', { roomId, userId, userType, userName });
-    
+    const requestedType = url.searchParams.get('type') === 'proctor' ? 'proctor' : 'candidate';
+
     if (!roomId) {
         console.log('No room ID provided, closing connection');
         ws.close(1008, 'Room ID required');
         return;
     }
-    
+
     // Get room
-    let room = rooms.get(roomId);
+    const room = rooms.get(roomId);
     if (!room) {
         console.log('Room not found:', roomId);
         ws.close(1008, 'Room not found. Please create room first.');
         return;
     }
+
+    // Identity comes from the signed-in administrator or verified student, never the URL
+    let userId = '';
+    let userType = requestedType;
+    let userName = '';
+    try {
+        if (requestedType === 'proctor') {
+            const staff = await loadStaff(req);
+            if (!staff) {
+                ws.close(1008, 'Sign in as an invigilator to join this session');
+                return;
+            }
+            if (!hasPermission(staff, 'invigilation')) {
+                ws.close(1008, 'Your access role does not include invigilation');
+                return;
+            }
+            if (room.proctor !== staff.id) {
+                ws.close(1008, 'Only the invigilator who created this session can join as invigilator');
+                return;
+            }
+            userId = staff.id;
+            userType = 'proctor';
+            userName = staff.name;
+        } else {
+            const student = await loadStudent(req);
+            if (!student) {
+                ws.close(1008, 'Verify your student number before joining');
+                return;
+            }
+            if (student.companyId !== room.companyId) {
+                ws.close(1008, 'This session belongs to another institution');
+                return;
+            }
+            userId = student.id;
+            userType = 'candidate';
+            userName = student.fullName;
+        }
+    } catch (error) {
+        console.error('Could not verify WebSocket identity:', error.message);
+        ws.close(1011, 'Could not verify your session');
+        return;
+    }
     
+    console.log('Connection details:', { roomId, userId, userType, userName });
     console.log(`Room found: ${roomId}, current participants: ${room.participants.size}`);
     
     // Check if trying to join as proctor but room already has one
@@ -553,9 +893,9 @@ wss.on('connection', (ws, req) => {
         }
     }
     
-    // Check room capacity (proctor counts toward the advertised limit)
-    const maxCapacity = room.maxParticipants;
-    if (room.participants.size >= maxCapacity) {
+    // Check room capacity, ignoring any stale socket for this same user
+    const otherParticipants = Array.from(room.participants.keys()).filter(id => id !== userId).length;
+    if (otherParticipants >= room.maxParticipants) {
         console.log('Room is full:', roomId);
         ws.close(1008, 'Room is full');
         return;
@@ -1089,6 +1429,13 @@ setInterval(() => {
         }
     }
 }, 30 * 60 * 1000);
+
+// Drop expired sign-in sessions every hour
+setInterval(() => {
+    authStore.cleanupSessions().catch(error => {
+        console.warn('Could not clean expired sessions:', error.message);
+    });
+}, 60 * 60 * 1000);
 
 // Export for testing
 module.exports = { app, server, rooms, connections };

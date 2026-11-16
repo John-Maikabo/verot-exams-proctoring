@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Sign in | Verot Exams Proctoring</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/portal.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="auth-page" data-auth-mode="login">
+    <main class="auth-shell">
+        <section class="auth-brand">
+            <a class="auth-logo" href="index.html">
+                <i class="fas fa-graduation-cap"></i>
+                <span>Verot Exams Proctoring</span>
+            </a>
+            <h1>Invigilate with confidence.</h1>
+            <p>Sign in to run live exam sessions, monitor candidates, build papers, and manage your institution's team and student register.</p>
+            <ul class="auth-points">
+                <li><i class="fas fa-video"></i> Live camera monitoring and spotlights</li>
+                <li><i class="fas fa-book-open"></i> Shared question bank and papers</li>
+                <li><i class="fas fa-user-shield"></i> Roles for invigilation, questions, quizzes, users, and students</li>
+            </ul>
+        </section>
+
+        <section class="auth-card">
+            <h2><i class="fas fa-right-to-bracket"></i> Staff sign in</h2>
+            <p class="auth-sub">Use the email and password for your institution account.</p>
+
+            <form id="authForm" novalidate>
+                <div class="form-group">
+                    <label for="authEmail">Email</label>
+                    <input id="authEmail" type="email" autocomplete="username" placeholder="you@institution.edu" required>
+                </div>
+                <div class="form-group">
+                    <label for="authPassword">Password</label>
+                    <div class="password-field">
+                        <input id="authPassword" type="password" autocomplete="current-password" placeholder="Your password" required>
+                        <button type="button" class="password-toggle" data-toggle-password="authPassword" aria-label="Show password">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <p class="form-error hidden" id="authError"></p>
+
+                <button type="submit" id="authSubmit" class="btn btn-primary btn-block">
+                    <i class="fas fa-right-to-bracket"></i> Sign in
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                New to Verot? <a href="register.html">Register your institution</a>
+            </p>
+            <p class="auth-switch muted">
+                Sitting an exam? <a href="student.html">Go to the student portal</a>
+            </p>
+        </section>
+    </main>
+
+    <script src="js/auth-page.js"></script>
+</body>
+</html>

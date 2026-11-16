@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Register your institution | Verot Exams Proctoring</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/portal.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="auth-page" data-auth-mode="register">
+    <main class="auth-shell">
+        <section class="auth-brand">
+            <a class="auth-logo" href="index.html">
+                <i class="fas fa-graduation-cap"></i>
+                <span>Verot Exams Proctoring</span>
+            </a>
+            <h1>Register your institution.</h1>
+            <p>Create one account for your school, college, or training centre. The person who registers becomes the first administrator.</p>
+            <ul class="auth-points">
+                <li><i class="fas fa-user-shield"></i> You become the administrator</li>
+                <li><i class="fas fa-users-gear"></i> Invite colleagues and assign access</li>
+                <li><i class="fas fa-file-csv"></i> Upload students and let only them sit exams</li>
+            </ul>
+        </section>
+
+        <section class="auth-card auth-card-wide">
+            <h2><i class="fas fa-building-columns"></i> Create your institution account</h2>
+            <p class="auth-sub">This email and password sign you in as the administrator.</p>
+
+            <form id="authForm" novalidate>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="companyName">Company / institution name <span class="required-star">*</span></label>
+                        <input id="companyName" maxlength="120" placeholder="e.g. Ridgeway College" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="adminName">Your full name</label>
+                        <input id="adminName" maxlength="120" placeholder="e.g. Janet Osei">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="authEmail">Company email <span class="required-star">*</span></label>
+                        <input id="authEmail" type="email" autocomplete="username" maxlength="160" placeholder="admin@institution.edu" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contact">Contact number <span class="required-star">*</span></label>
+                        <input id="contact" type="tel" maxlength="40" placeholder="+254 700 000 000" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="address">Company address <span class="required-star">*</span></label>
+                    <input id="address" maxlength="300" placeholder="Street, city, country" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="referral">How did you hear about us? <span class="required-star">*</span></label>
+                    <select id="referral" required>
+                        <option value="">Select an option</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="authPassword">Password <span class="required-star">*</span></label>
+                        <div class="password-field">
+                            <input id="authPassword" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters" required>
+                            <button type="button" class="password-toggle" data-toggle-password="authPassword" aria-label="Show password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm password <span class="required-star">*</span></label>
+                        <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" placeholder="Repeat your password" required>
+                    </div>
+                </div>
+
+                <p class="form-error hidden" id="authError"></p>
+
+                <button type="submit" id="authSubmit" class="btn btn-primary btn-block">
+                    <i class="fas fa-building-circle-check"></i> Create institution account
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                Already registered? <a href="login.html">Sign in</a>
+            </p>
+        </section>
+    </main>
+
+    <script src="js/auth-page.js"></script>
+</body>
+</html>

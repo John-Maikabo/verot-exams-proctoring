@@ -19,6 +19,19 @@
                 <p class="brand-sub">Invigilator portal &middot; live exam monitoring</p>
             </div>
             <div class="header-actions">
+                <div class="account-chip hidden" id="accountChip">
+                    <span class="account-avatar" id="accountInitial">?</span>
+                    <span class="account-meta">
+                        <strong id="accountName">-</strong>
+                        <small>
+                            <span id="accountCompany">-</span>
+                            <span class="role-badge member" id="accountRole">Member</span>
+                        </small>
+                    </span>
+                    <button type="button" id="logoutBtn" class="account-signout" title="Sign out">
+                        <i class="fas fa-right-from-bracket"></i>
+                    </button>
+                </div>
                 <a class="portal-link" href="index.html"><i class="fas fa-house"></i> Home</a>
                 <div class="status">
                     <span class="status-indicator" id="statusIndicator"></span>
@@ -30,12 +43,12 @@
         <main class="main-content">
             <!-- Left panel - session, roster, controls -->
             <aside class="panel sidebar">
-                <section class="side-card" data-role="proctor-only">
+                <section class="side-card" data-role="proctor-only" data-permission="invigilation">
                     <h2><i class="fas fa-plus-circle"></i> Start a session</h2>
 
                     <div class="form-group">
-                        <label for="userName"><i class="fas fa-user"></i> Invigilator name <span class="required-star">*</span></label>
-                        <input type="text" id="userName" placeholder="Enter your name" value="" required>
+                        <label for="userName"><i class="fas fa-user"></i> Invigilator</label>
+                        <input type="text" id="userName" readonly placeholder="From your staff account">
                     </div>
 
                     <div class="form-group" id="sessionDescriptionGroup">
@@ -65,9 +78,16 @@
                         <input type="text" id="studentRoomId" placeholder="Enter session ID" autocomplete="off">
                     </div>
 
+                    <div class="student-room-hint hidden" id="studentRoomHint"></div>
+
                     <div class="form-group">
-                        <label for="studentName"><i class="fas fa-user"></i> Your name <span class="required-star">*</span></label>
-                        <input type="text" id="studentName" placeholder="Full name as on the register" autocomplete="off">
+                        <label for="studentNumber"><i class="fas fa-id-card"></i> Student number <span class="required-star">*</span></label>
+                        <input type="text" id="studentNumber" placeholder="As on your student record" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="studentEmail"><i class="fas fa-envelope"></i> Email on record <span class="required-star">*</span></label>
+                        <input type="email" id="studentEmail" placeholder="you@example.edu" autocomplete="off">
                     </div>
 
                     <button id="studentJoinCameraBtn" class="btn btn-primary btn-block">
@@ -76,7 +96,10 @@
                     <button id="studentJoinAudioBtn" class="btn btn-secondary btn-block">
                         <i class="fas fa-microphone"></i> Join with audio only
                     </button>
-                    <p class="form-hint"><i class="fas fa-shield-halved"></i> Your camera and microphone are visible to the invigilator.</p>
+                    <p class="form-hint"><i class="fas fa-shield-halved"></i> Only students on your institution's register can join. Your camera and microphone are visible to the invigilator.</p>
+                    <button type="button" id="studentSignOutBtn" class="btn btn-secondary btn-block hidden">
+                        <i class="fas fa-user-pen"></i> Not you? Use another student
+                    </button>
                 </section>
 
                 <!-- Session info -->
@@ -221,14 +244,20 @@
             <!-- Right panel - live monitoring -->
             <section class="panel video-panel">
                 <div class="workspace-tabs" data-role="proctor-only" role="tablist" aria-label="Invigilator workspace">
-                    <button type="button" class="workspace-tab active" data-workspace="live" role="tab" aria-selected="true">
+                    <button type="button" class="workspace-tab active" data-workspace="live" data-permission-tab="invigilation" role="tab" aria-selected="true">
                         <i class="fas fa-video"></i> Live session
                     </button>
-                    <button type="button" class="workspace-tab" data-workspace="bank" role="tab" aria-selected="false">
+                    <button type="button" class="workspace-tab" data-workspace="bank" data-permission-tab="questions,quizzes" role="tab" aria-selected="false">
                         <i class="fas fa-book-open"></i> Question bank <span class="tab-count" id="bankCount">0</span>
                     </button>
-                    <button type="button" class="workspace-tab" data-workspace="exams" role="tab" aria-selected="false">
+                    <button type="button" class="workspace-tab" data-workspace="exams" data-permission-tab="quizzes,invigilation" role="tab" aria-selected="false">
                         <i class="fas fa-file-pen"></i> Exam setup
+                    </button>
+                    <button type="button" class="workspace-tab" data-workspace="team" data-permission-tab="users" role="tab" aria-selected="false">
+                        <i class="fas fa-users-gear"></i> Team
+                    </button>
+                    <button type="button" class="workspace-tab" data-workspace="students" data-permission-tab="students" role="tab" aria-selected="false">
+                        <i class="fas fa-user-graduate"></i> Students <span class="tab-count" id="studentRosterTabCount">0</span>
                     </button>
                     <span class="workspace-tab-spacer"></span>
                     <button type="button" class="exam-live-chip hidden" id="examLiveChip" title="Open exam setup">
@@ -329,7 +358,7 @@
                             <h2><i class="fas fa-book-open"></i> Question bank</h2>
                             <p class="workspace-sub">Write questions once and reuse them in any paper.</p>
                         </div>
-                        <button type="button" id="newQuestionBtn" class="btn btn-primary">
+                        <button type="button" id="newQuestionBtn" class="btn btn-primary" data-permission="questions">
                             <i class="fas fa-plus"></i> New question
                         </button>
                     </div>
@@ -357,6 +386,54 @@
                     </div>
                 </div>
 
+                <div class="workspace-panel hidden" id="workspaceTeam" data-workspace-panel="team" data-role="proctor-only">
+                    <div class="workspace-head">
+                        <div>
+                            <h2><i class="fas fa-users-gear"></i> Team</h2>
+                            <p class="workspace-sub">Give colleagues access to invigilation, question writing, quizzes, users, or the student register.</p>
+                        </div>
+                        <button type="button" id="addTeamUserBtn" class="btn btn-primary">
+                            <i class="fas fa-user-plus"></i> Add team user
+                        </button>
+                    </div>
+                    <div class="team-list" id="teamList"></div>
+                </div>
+
+                <div class="workspace-panel hidden" id="workspaceStudents" data-workspace-panel="students" data-role="proctor-only">
+                    <div class="workspace-head">
+                        <div>
+                            <h2><i class="fas fa-user-graduate"></i> Students</h2>
+                            <p class="workspace-sub">Upload your class list. Only students on this register can join your sessions and sit exams.</p>
+                        </div>
+                    </div>
+
+                    <div class="student-upload-card">
+                        <div class="upload-head">
+                            <h3><i class="fas fa-file-csv"></i> Import from CSV</h3>
+                            <button type="button" id="studentCsvTemplate" class="link-btn">
+                                <i class="fas fa-download"></i> Download template
+                            </button>
+                        </div>
+                        <p class="workspace-sub">Columns: <code>fullname</code>, <code>studentnumber</code>, <code>email</code>. Existing numbers are updated, new ones are added.</p>
+                        <div class="upload-actions">
+                            <label class="file-picker" for="studentCsvInput">
+                                <i class="fas fa-upload"></i> Choose CSV
+                                <input type="file" id="studentCsvInput" accept=".csv,text/csv">
+                            </label>
+                            <button type="button" id="studentCsvImport" class="btn btn-primary" disabled>
+                                <i class="fas fa-cloud-arrow-up"></i> Import students
+                            </button>
+                        </div>
+                        <div class="import-summary hidden" id="studentImportSummary"></div>
+                    </div>
+
+                    <div class="roster-toolbar">
+                        <input type="search" id="studentRosterSearch" placeholder="Search name, number, or email" autocomplete="off">
+                        <span class="bank-result-count"><strong id="studentRosterCount">0</strong> students</span>
+                    </div>
+                    <div class="student-roster" id="studentRosterList"></div>
+                </div>
+
                 <div class="workspace-panel hidden" id="workspaceExams" data-workspace-panel="exams">
                     <div class="exam-proctor-view" data-role="proctor-only">
                         <div class="workspace-head">
@@ -364,7 +441,7 @@
                                 <h2><i class="fas fa-file-pen"></i> Exam setup</h2>
                                 <p class="workspace-sub">Assemble a paper from the bank, then deliver it to your live session.</p>
                             </div>
-                            <button type="button" id="newExamBtn" class="btn btn-primary">
+                            <button type="button" id="newExamBtn" class="btn btn-primary" data-permission="quizzes">
                                 <i class="fas fa-plus"></i> New exam
                             </button>
                         </div>
@@ -415,7 +492,7 @@
                                     </div>
                                     <div class="question-picker" id="examQuestionPicker"></div>
 
-                                    <div class="exam-actions">
+                                    <div class="exam-actions" data-permission="quizzes">
                                         <button id="saveExamBtn" class="btn btn-primary">
                                             <i class="fas fa-floppy-disk"></i> Save paper
                                         </button>
@@ -424,7 +501,7 @@
                                         </button>
                                     </div>
 
-                                    <div class="delivery-card">
+                                    <div class="delivery-card" data-permission="invigilation">
                                         <div class="delivery-head">
                                             <h3><i class="fas fa-paper-plane"></i> Deliver to session</h3>
                                             <span class="delivery-status" id="deliveryStatus">Not delivered</span>
@@ -515,13 +592,9 @@
                     <label for="joinRoomId">Session ID</label>
                     <input type="text" id="joinRoomId" placeholder="Enter session ID" value="">
                 </div>
-                <div class="form-group">
-                    <label for="joinUserName">Your name <span class="required-star">*</span></label>
-                    <input type="text" id="joinUserName" placeholder="Enter your name" value="" required>
-                </div>
                 <p class="form-hint">
                     <i class="fas fa-circle-info"></i>
-                    Choose how to join. If you join with audio only, you can start your camera later from Media.
+                    You join with your staff account. Choose how to use your camera and microphone.
                 </p>
                 <div class="join-mode-buttons">
                     <button id="joinWithCameraBtn" class="btn btn-success">
@@ -678,6 +751,74 @@
             </div>
         </div>
 
+        <!-- Team user editor -->
+        <div id="teamModal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="teamModalTitle"><i class="fas fa-user-plus"></i> Add team user</h2>
+                <form id="teamForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="teamName">Full name <span class="required-star">*</span></label>
+                            <input id="teamName" maxlength="80" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="teamEmail">Email <span class="required-star">*</span></label>
+                            <input id="teamEmail" type="email" maxlength="160" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="teamPassword">Password</label>
+                            <input id="teamPassword" type="password" minlength="8" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label for="teamRole">Role</label>
+                            <select id="teamRole">
+                                <option value="member">Member</option>
+                                <option value="admin">Administrator</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="form-hint" id="teamRoleHint">Choose exactly what this person can open and change.</p>
+
+                    <div class="form-group">
+                        <label>Access permissions</label>
+                        <div class="permission-grid" id="teamPermissions">
+                            <label class="permission-option">
+                                <input type="checkbox" value="invigilation">
+                                <span><i class="fas fa-video"></i> Invigilation</span>
+                            </label>
+                            <label class="permission-option">
+                                <input type="checkbox" value="questions">
+                                <span><i class="fas fa-book-open"></i> Create exam questions</span>
+                            </label>
+                            <label class="permission-option">
+                                <input type="checkbox" value="quizzes">
+                                <span><i class="fas fa-file-pen"></i> Create quizzes</span>
+                            </label>
+                            <label class="permission-option">
+                                <input type="checkbox" value="users">
+                                <span><i class="fas fa-users-gear"></i> Create users</span>
+                            </label>
+                            <label class="permission-option">
+                                <input type="checkbox" value="students">
+                                <span><i class="fas fa-user-graduate"></i> Upload students</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <p class="form-error hidden" id="teamError"></p>
+
+                    <div class="modal-buttons">
+                        <button type="button" id="teamCancelBtn" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" id="teamSaveBtn" class="btn btn-primary">
+                            <i class="fas fa-floppy-disk"></i> Save user
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <datalist id="subjectOptions"></datalist>
 
         <footer>
@@ -698,6 +839,7 @@
         updateCurrentTime();
         setInterval(updateCurrentTime, 60000);
     </script>
+    <script src="js/auth.js"></script>
     <script src="js/main.js"></script>
     <script src="js/exam.js"></script>
 </body>

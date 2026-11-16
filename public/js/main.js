@@ -8,6 +8,11 @@ class ProctoringApp {
         this.signaling = null;
         this.roomId = null;
         this.roomDescription = '';
+        this.authSession = null;
+        this.staffId = null;
+        this.studentId = null;
+        this.studentNumber = '';
+        this.studentEmail = '';
         this.userId = this.getOrCreateUserId();
         this.userType = null;
         this.userName = '';
@@ -87,13 +92,12 @@ class ProctoringApp {
         if (this.pageRole === 'student') return;
         
         const savedRoom = localStorage.getItem('proctorRoom');
-        const savedUserId = localStorage.getItem('proctorUserId');
         
-        if (savedRoom && savedUserId === this.userId) {
+        if (savedRoom) {
             console.log('🔍 Found saved proctor session for room:', savedRoom);
             this.roomId = savedRoom;
             this.userType = 'proctor';
-            this.userName = localStorage.getItem('proctorName') || 'Lecturer';
+            this.userName = localStorage.getItem('proctorName') || '';
             
             // Update URL to show proctor type
             const url = new URL(window.location);
@@ -103,14 +107,43 @@ class ProctoringApp {
             
             // Update name input if exists
             const nameInput = document.getElementById('userName');
-            if (nameInput) {
+            if (nameInput && this.userName) {
                 nameInput.value = this.userName;
             }
         }
     }
     
+    applyAuthSession(session) {
+        this.authSession = session || null;
+        if (!session) return;
+        
+        if (session.kind === 'staff' && session.user) {
+            this.staffId = session.user.id;
+            this.userId = session.user.id;
+            this.userName = session.user.name || this.userName;
+            const nameInput = document.getElementById('userName');
+            if (nameInput) nameInput.value = this.userName;
+            return;
+        }
+        
+        if (session.kind === 'student' && session.student) {
+            this.studentId = session.student.id;
+            this.userId = session.student.id;
+            this.studentNumber = session.student.studentNumber || this.studentNumber;
+            this.studentEmail = session.student.email || this.studentEmail;
+            const numberInput = document.getElementById('studentNumber');
+            const emailInput = document.getElementById('studentEmail');
+            if (numberInput && !numberInput.value) numberInput.value = this.studentNumber;
+            if (emailInput && !emailInput.value) emailInput.value = this.studentEmail;
+        }
+    }
+    
     async init() {
         console.log('🔧 App init called');
+        
+        // Identity comes from the signed-in account, never from the URL
+        const session = await (window.verotAuth ? window.verotAuth.ready : Promise.resolve(null));
+        this.applyAuthSession(session);
         
         // TURN servers are fetched in the background so the UI is never blocked
         this._turnServersPromise = this.fetchTurnServers();
@@ -130,9 +163,8 @@ class ProctoringApp {
             
             // Override with saved proctor session if applicable
             const savedRoom = localStorage.getItem('proctorRoom');
-            const savedUserId = localStorage.getItem('proctorUserId');
             
-            if (roomId && savedRoom === roomId && savedUserId === this.userId && this.pageRole !== 'student') {
+            if (roomId && savedRoom === roomId && this.pageRole !== 'student') {
                 console.log('🎯 Proctor rejoining their own room, forcing proctor role');
                 userType = 'proctor';
                 this.userType = 'proctor';
@@ -143,13 +175,11 @@ class ProctoringApp {
                 this.userType = userType;
                 
                 const nameInput = document.getElementById('userName');
-                if (nameInput) {
-                    const savedName = localStorage.getItem('proctorName');
-                    this.userName = savedName || (this.userType === 'proctor' ? 'Lecturer' : 'Student');
+                if (nameInput && this.userName) {
                     nameInput.value = this.userName;
                 }
                 
-                const isSavedProctor = savedRoom === roomId && savedUserId === this.userId;
+                const isSavedProctor = savedRoom === roomId;
                 const savedCandidate = this.getSavedCandidateSession();
                 const isSavedCandidate = !!savedCandidate && savedCandidate.room === roomId;
                 if (!isSavedProctor && !isSavedCandidate && this.pageRole !== 'student') {
@@ -177,9 +207,13 @@ class ProctoringApp {
                 if (studentRoomInput && !studentRoomInput.value) {
                     studentRoomInput.value = roomId || savedCandidate.room || '';
                 }
-                const studentNameInput = document.getElementById('studentName');
-                if (studentNameInput && !studentNameInput.value) {
-                    studentNameInput.value = savedCandidate.name || '';
+                const numberInput = document.getElementById('studentNumber');
+                if (numberInput && !numberInput.value) {
+                    numberInput.value = this.studentNumber || savedCandidate.number || '';
+                }
+                const emailInput = document.getElementById('studentEmail');
+                if (emailInput && !emailInput.value) {
+                    emailInput.value = this.studentEmail || savedCandidate.email || '';
                 }
             }
         }, 100);
@@ -270,11 +304,12 @@ class ProctoringApp {
     
     getSavedCandidateSession() {
         const room = localStorage.getItem('candidateRoom');
-        const userId = localStorage.getItem('candidateUserId');
-        if (!room || userId !== this.userId) return null;
+        if (!room) return null;
         return {
             room: room,
             name: localStorage.getItem('candidateName') || 'Student',
+            number: localStorage.getItem('candidateNumber') || '',
+            email: localStorage.getItem('candidateEmail') || '',
             media: localStorage.getItem('candidateMedia') || 'camera'
         };
     }
@@ -283,6 +318,8 @@ class ProctoringApp {
         localStorage.setItem('candidateRoom', this.roomId);
         localStorage.setItem('candidateUserId', this.userId);
         localStorage.setItem('candidateName', this.userName);
+        localStorage.setItem('candidateNumber', this.studentNumber || '');
+        localStorage.setItem('candidateEmail', this.studentEmail || '');
         localStorage.setItem('candidateMedia', this._joinedMediaMode || 'camera');
     }
     
@@ -290,6 +327,8 @@ class ProctoringApp {
         localStorage.removeItem('candidateRoom');
         localStorage.removeItem('candidateUserId');
         localStorage.removeItem('candidateName');
+        localStorage.removeItem('candidateNumber');
+        localStorage.removeItem('candidateEmail');
         localStorage.removeItem('candidateMedia');
         this.updateJoinButtonVisibility();
     }
@@ -333,7 +372,7 @@ class ProctoringApp {
         
         const rejoinBtn = document.getElementById('rejoinRoomBtn');
         if (rejoinBtn) {
-            const savedCandidate = this.getSavedCandidateSession();
+            const savedCandidate = this.pageRole === 'student' ? this.getSavedCandidateSession() : null;
             const hasProctorSession = !!localStorage.getItem('proctorRoom');
             const canRejoin = !!savedCandidate && !hasProctorSession && !this.signaling;
             rejoinBtn.classList.toggle('hidden', !canRejoin);
@@ -342,9 +381,8 @@ class ProctoringApp {
     
     async showProctorRejoinPanel() {
         const savedRoom = localStorage.getItem('proctorRoom');
-        const savedUserId = localStorage.getItem('proctorUserId');
         
-        if (!savedRoom || savedUserId !== this.userId) return false;
+        if (!savedRoom) return false;
         
         let roomInfo = null;
         let roomMissing = false;
@@ -416,7 +454,7 @@ class ProctoringApp {
             document.getElementById('rejoinAsProctorBtn').addEventListener('click', () => {
                 this.roomId = savedRoom;
                 this.userType = 'proctor';
-                this.userName = localStorage.getItem('proctorName') || 'Lecturer';
+                this.userName = this.userName || localStorage.getItem('proctorName') || '';
                 this.updateJoinButtonVisibility();
                 this.joinExistingRoom();
                 panel.remove();
@@ -439,6 +477,7 @@ class ProctoringApp {
     }
     
     async showCandidateRejoinPanel() {
+        if (this.pageRole !== 'student') return false;
         const saved = this.getSavedCandidateSession();
         if (!saved) return false;
         
@@ -519,6 +558,12 @@ class ProctoringApp {
         this.roomId = saved.room;
         this.userType = 'candidate';
         this.userName = saved.name;
+        this.studentNumber = this.studentNumber || saved.number || '';
+        this.studentEmail = this.studentEmail || saved.email || '';
+        const numberInput = document.getElementById('studentNumber');
+        const emailInput = document.getElementById('studentEmail');
+        if (numberInput && !numberInput.value) numberInput.value = this.studentNumber;
+        if (emailInput && !emailInput.value) emailInput.value = this.studentEmail;
         this.joinExistingRoom(saved.media);
     }
     
@@ -552,8 +597,6 @@ class ProctoringApp {
         document.getElementById('cancelJoinBtn')?.addEventListener('click', () => this.cancelJoin());
         document.getElementById('backgroundSelect')?.addEventListener('change', (e) => this.changeBackground(e.target.value));
         document.getElementById('sessionDescription')?.addEventListener('input', (e) => e.target.classList.remove('input-error'));
-        document.getElementById('userName')?.addEventListener('input', (e) => e.target.classList.remove('input-error'));
-        document.getElementById('joinUserName')?.addEventListener('input', (e) => e.target.classList.remove('input-error'));
         document.getElementById('toggleAudioBtn')?.addEventListener('click', () => this.toggleAudio());
         document.getElementById('toggleVideoBtn')?.addEventListener('click', () => this.toggleVideo());
         document.getElementById('screenShareBtn')?.addEventListener('click', () => this.toggleScreenShare());
@@ -668,18 +711,12 @@ class ProctoringApp {
             this.updateStatus('Creating session...', 'connecting');
             this.showMessage('Creating session...');
             
-            const nameInput = document.getElementById('userName');
-            if (!nameInput || !nameInput.value.trim()) {
-                this.updateStatus('Name required', 'disconnected');
-                this.showMessage('❌ Please enter your name before creating the session', 'error');
-                if (nameInput) {
-                    nameInput.classList.add('input-error');
-                    nameInput.focus();
-                }
+            this.userName = (this.userName || (this.authSession && this.authSession.user && this.authSession.user.name) || '').trim();
+            if (!this.userName) {
+                this.updateStatus('Sign-in required', 'disconnected');
+                this.showMessage('❌ Sign in with your staff account before creating a session', 'error');
                 return;
             }
-            this.userName = nameInput.value.trim().slice(0, 60);
-            nameInput.classList.remove('input-error');
             
             this.userType = 'proctor';
             
@@ -698,7 +735,7 @@ class ProctoringApp {
             descriptionInput.classList.remove('input-error');
             
             console.log('Creating room for:', this.userName);
-            const response = await fetch('/api/create-room?userId=' + this.userId + '&name=' + encodeURIComponent(this.userName) + '&description=' + encodeURIComponent(description));
+            const response = await fetch('/api/create-room?description=' + encodeURIComponent(description));
             const data = await response.json();
             
             if (!data.success) {
@@ -708,6 +745,8 @@ class ProctoringApp {
             if (data.success) {
                 this.roomId = data.roomId;
                 this.roomDescription = data.description || description;
+                if (data.userId) this.userId = data.userId;
+                if (data.userName) this.userName = data.userName;
                 
                 // Save proctor session
                 localStorage.setItem('proctorRoom', this.roomId);
@@ -793,13 +832,6 @@ class ProctoringApp {
         if (roomId && joinRoomIdInput) {
             joinRoomIdInput.value = roomId;
         }
-        
-        const joinUserNameInput = document.getElementById('joinUserName');
-        if (joinUserNameInput && !joinUserNameInput.value) {
-            const savedCandidate = this.getSavedCandidateSession();
-            const matchesSaved = savedCandidate && joinRoomIdInput && savedCandidate.room === joinRoomIdInput.value.trim().toUpperCase();
-            joinUserNameInput.value = matchesSaved ? savedCandidate.name : (this.userName || 'Student');
-        }
     }
     
     cancelJoin() {
@@ -820,23 +852,63 @@ class ProctoringApp {
             return;
         }
         
-        const nameInput = document.getElementById('joinUserName');
-        const name = nameInput ? nameInput.value.trim() : '';
+        const name = (this.userName || '').trim();
         if (!name) {
-            this.showMessage('❌ Please enter your name', 'error');
-            if (nameInput) {
-                nameInput.classList.add('input-error');
-                nameInput.focus();
-            }
+            this.showMessage('❌ Sign in before joining a session', 'error');
             return;
         }
-        this.userName = name.slice(0, 60);
-        nameInput.classList.remove('input-error');
         
         this.roomId = roomId;
         this.userType = this.pageRole === 'proctor' ? 'proctor' : 'candidate';
         this.joinExistingRoom(mediaMode);
         this.cancelJoin();
+    }
+    
+    async verifyStudentForRoom() {
+        const numberInput = document.getElementById('studentNumber');
+        const emailInput = document.getElementById('studentEmail');
+        const studentNumber = numberInput ? numberInput.value.trim() : this.studentNumber;
+        const email = emailInput ? emailInput.value.trim() : this.studentEmail;
+        
+        [numberInput, emailInput].forEach(input => input && input.classList.remove('input-error'));
+        
+        if (!studentNumber) {
+            if (numberInput) {
+                numberInput.classList.add('input-error');
+                numberInput.focus();
+            }
+            this.showMessage('❌ Enter your student number', 'error');
+            return false;
+        }
+        if (!email) {
+            if (emailInput) {
+                emailInput.classList.add('input-error');
+                emailInput.focus();
+            }
+            this.showMessage('❌ Enter the email on your student record', 'error');
+            return false;
+        }
+        
+        try {
+            const response = await fetch(`/api/rooms/${encodeURIComponent(this.roomId)}/student-session`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ studentNumber, email })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Your student details were not recognised');
+            }
+            this.userName = data.student.fullName;
+            this.studentNumber = data.student.studentNumber;
+            this.studentEmail = data.student.email;
+            this.userId = data.student.id;
+            return true;
+        } catch (error) {
+            this.updateStatus('Not on register', 'disconnected');
+            this.showMessage(`❌ ${error.message}. Check your details or contact your invigilator.`, 'error');
+            return false;
+        }
     }
     
     async joinExistingRoom(mediaMode = null) {
@@ -859,6 +931,8 @@ class ProctoringApp {
         }
         
         if (this.userType === 'candidate') {
+            const verified = await this.verifyStudentForRoom();
+            if (!verified) return;
             this._joinedMediaMode = mediaMode === 'audio' ? 'audio' : 'camera';
             this.saveCandidateSession();
         }
@@ -883,12 +957,11 @@ class ProctoringApp {
     }
     
     connectWebSocket() {
-        // Determine correct user type
+        // The server derives identity from the signed-in account
         let wsType = this.userType;
         const savedRoom = localStorage.getItem('proctorRoom');
-        const savedUserId = localStorage.getItem('proctorUserId');
         
-        if (this.pageRole !== 'student' && savedRoom && savedUserId === this.userId && this.roomId === savedRoom) {
+        if (this.pageRole !== 'student' && savedRoom && this.roomId === savedRoom) {
             wsType = 'proctor'; // Force proctor for room creator
             this.userType = 'proctor';
             console.log('🎯 Forcing proctor role for room creator');
@@ -901,7 +974,7 @@ class ProctoringApp {
         
         // FIXED: Use correct protocol and host (no port 3000)
         const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        this._signalingUrl = `${wsProtocol}${window.location.host}?room=${this.roomId}&userId=${this.userId}&type=${wsType}&name=${encodeURIComponent(this.userName)}`;
+        this._signalingUrl = `${wsProtocol}${window.location.host}?room=${this.roomId}&type=${wsType}`;
         
         this._intentionalClose = false;
         this._reconnecting = false;
@@ -2788,9 +2861,11 @@ class ProctoringApp {
     
     joinFromStudentCard(mode) {
         const roomInput = document.getElementById('studentRoomId');
-        const nameInput = document.getElementById('studentName');
+        const numberInput = document.getElementById('studentNumber');
+        const emailInput = document.getElementById('studentEmail');
         const roomId = roomInput ? roomInput.value.trim().toUpperCase() : '';
-        const name = nameInput ? nameInput.value.trim() : '';
+        
+        [roomInput, numberInput, emailInput].forEach(input => input && input.classList.remove('input-error'));
         
         if (!roomId) {
             this.showMessage('❌ Please enter the session ID', 'error');
@@ -2800,22 +2875,28 @@ class ProctoringApp {
             }
             return;
         }
-        if (roomInput) roomInput.classList.remove('input-error');
-        
-        if (!name) {
-            this.showMessage('❌ Please enter your name', 'error');
-            if (nameInput) {
-                nameInput.classList.add('input-error');
-                nameInput.focus();
+        if (!numberInput || !numberInput.value.trim()) {
+            this.showMessage('❌ Please enter your student number', 'error');
+            if (numberInput) {
+                numberInput.classList.add('input-error');
+                numberInput.focus();
             }
             return;
         }
-        if (nameInput) nameInput.classList.remove('input-error');
+        if (!emailInput || !emailInput.value.trim()) {
+            this.showMessage('❌ Please enter the email on your student record', 'error');
+            if (emailInput) {
+                emailInput.classList.add('input-error');
+                emailInput.focus();
+            }
+            return;
+        }
         
+        this.studentNumber = numberInput.value.trim();
+        this.studentEmail = emailInput.value.trim();
         this.roomId = roomId;
-        document.getElementById('joinRoomId').value = roomId;
-        document.getElementById('joinUserName').value = name;
-        this.confirmJoin(mode);
+        this.userType = 'candidate';
+        this.joinExistingRoom(mode);
     }
     
     setRosterFilter(filter) {

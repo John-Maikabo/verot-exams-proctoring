@@ -32,6 +32,14 @@
 
     const el = id => document.getElementById(id);
 
+    function can(permission) {
+        return !!(window.verotAuth && window.verotAuth.can(permission));
+    }
+
+    function canAny(permissions) {
+        return permissions.some(permission => can(permission));
+    }
+
     function escapeHtml(value) {
         return String(value == null ? '' : value)
             .replace(/&/g, '&amp;')
@@ -196,6 +204,10 @@
     }
 
     function openQuestionEditor(question = null) {
+        if (!can('questions')) {
+            toast('Your access role cannot edit questions', 'error');
+            return;
+        }
         state.editingQuestionId = question ? question.id : null;
         el('questionModalTitle').innerHTML = question
             ? '<i class="fas fa-pen"></i> Edit question'
@@ -342,6 +354,10 @@
 
     async function saveQuestion(event) {
         event.preventDefault();
+        if (!can('questions')) {
+            toast('Your access role cannot edit questions', 'error');
+            return;
+        }
         const submitBtn = el('questionForm').querySelector('button[type="submit"]');
         submitBtn.disabled = true;
 
@@ -368,6 +384,10 @@
     }
 
     async function deleteQuestion(id) {
+        if (!can('questions')) {
+            toast('Your access role cannot edit questions', 'error');
+            return;
+        }
         if (!window.confirm('Delete this question? It will also be removed from any paper using it.')) return;
         try {
             await api(`/api/questions/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -529,6 +549,10 @@
 
     async function saveExam() {
         if (!state.draft) return;
+        if (!can('quizzes')) {
+            toast('Your access role cannot edit quizzes', 'error');
+            return;
+        }
         const payload = examPayloadFromEditor();
         if (!payload.title) {
             toast('❌ Add a paper title first', 'error');
@@ -560,6 +584,10 @@
 
     async function deleteExam() {
         if (!state.draft) return;
+        if (!can('quizzes')) {
+            toast('Your access role cannot edit quizzes', 'error');
+            return;
+        }
         if (!window.confirm(`Delete "${state.draft.title}"? This cannot be undone.`)) return;
         try {
             await api(`/api/exams/${encodeURIComponent(state.draft.id)}`, { method: 'DELETE' });
@@ -574,6 +602,10 @@
     }
 
     function openExamModal() {
+        if (!can('quizzes')) {
+            toast('Your access role cannot create quizzes', 'error');
+            return;
+        }
         el('newExamTitle').value = '';
         el('newExamSubject').value = el('bankSubjectFilter').value || '';
         el('newExamDuration').value = 60;
@@ -588,6 +620,10 @@
 
     async function createExam(event) {
         event.preventDefault();
+        if (!can('quizzes')) {
+            toast('Your access role cannot create quizzes', 'error');
+            return;
+        }
         const title = el('newExamTitle').value.trim();
         if (!title) {
             toast('❌ Paper title is required', 'error');
@@ -619,11 +655,6 @@
     function currentSessionRoom() {
         const app = window.proctoringApp;
         return state.session.roomId || (app && app.roomId) || null;
-    }
-
-    function currentSessionUser() {
-        const app = window.proctoringApp;
-        return app ? app.userId : null;
     }
 
     function updateExamChip() {
@@ -753,8 +784,11 @@
 
     async function deliverExam() {
         if (!state.draft) return;
+        if (!can('invigilation')) {
+            toast('Your access role cannot run invigilation', 'error');
+            return;
+        }
         const roomId = currentSessionRoom();
-        const userId = currentSessionUser();
         if (!roomId) {
             toast('Create or join a session before delivering', 'error');
             return;
@@ -768,7 +802,7 @@
         try {
             const data = await api(`/api/rooms/${encodeURIComponent(roomId)}/exam`, {
                 method: 'POST',
-                body: JSON.stringify({ examId: state.draft.id, userId })
+                body: JSON.stringify({ examId: state.draft.id })
             });
             state.deliveredExam = data.exam;
             toast('✅ Exam delivered to the session', 'success');
@@ -783,15 +817,17 @@
     }
 
     async function endExam() {
+        if (!can('invigilation')) {
+            toast('Your access role cannot run invigilation', 'error');
+            return;
+        }
         const roomId = currentSessionRoom();
-        const userId = currentSessionUser();
         if (!roomId || !state.deliveredExam) return;
         if (!window.confirm('End the exam for everyone? Students will no longer be able to submit.')) return;
 
         try {
             const data = await api(`/api/rooms/${encodeURIComponent(roomId)}/exam/end`, {
-                method: 'POST',
-                body: JSON.stringify({ userId })
+                method: 'POST'
             });
             state.deliveredExam = data.exam;
             toast('Exam ended', 'success');
@@ -807,8 +843,7 @@
         if (!app || !roomId) return;
         const isProctor = state.pageRole === 'proctor';
         try {
-            const query = isProctor ? `?userId=${encodeURIComponent(app.userId)}` : '';
-            const data = await api(`/api/rooms/${encodeURIComponent(roomId)}/exam${query}`);
+            const data = await api(`/api/rooms/${encodeURIComponent(roomId)}/exam`);
             if (state.session.roomId !== roomId) return;
             if (isProctor) {
                 state.deliveredExam = data.exam || null;
@@ -1108,6 +1143,12 @@
     // ==================== WORKSPACE ====================
 
     function switchWorkspace(key) {
+        if (state.pageRole === 'proctor') {
+            if (key === 'bank' && !canAny(['questions', 'quizzes'])) return;
+            if (key === 'exams' && !canAny(['quizzes', 'invigilation'])) return;
+            if (key === 'team' && !can('users')) return;
+            if (key === 'students' && !can('students')) return;
+        }
         document.querySelectorAll('.workspace-tab').forEach(tab => {
             const active = tab.dataset.workspace === key;
             tab.classList.toggle('active', active);
@@ -1247,13 +1288,16 @@
         });
     }
 
-    function init() {
+    async function init() {
         if (!el('workspaceBank')) return;
         bindEvents();
 
         if (state.pageRole === 'proctor') {
-            loadBank();
-            loadExams();
+            await (window.verotAuth ? window.verotAuth.ready : Promise.resolve(null));
+            if (canAny(['questions', 'quizzes'])) loadBank();
+            if (canAny(['quizzes', 'invigilation'])) loadExams();
+            const preferred = window.verotAuth && window.verotAuth.preferredWorkspace;
+            if (preferred) switchWorkspace(preferred);
         }
     }
 
