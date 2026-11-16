@@ -938,6 +938,334 @@ footer {
     gap: 10px;
 }
 
+/* Proctoring console */
+.console-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.panel .console-bar h2 {
+    margin-bottom: 0;
+}
+
+.console-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.console-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 13px;
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.85rem;
+    color: #a9b7c6;
+}
+
+.console-stat strong {
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+.console-stat-alert.has-alert {
+    background: rgba(230, 57, 70, 0.22);
+    border-color: rgba(230, 57, 70, 0.65);
+    color: #ffb3ba;
+}
+
+#remoteVideosTitle {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+#remoteVideosTitle h3 {
+    margin: 0;
+}
+
+.console-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #a9b7c6;
+}
+
+.remote-video-container {
+    cursor: zoom-in;
+    transition: box-shadow 0.18s ease;
+}
+
+.remote-video-container:hover {
+    box-shadow: 0 0 0 2px #4cc9f0, 0 10px 24px rgba(0, 0, 0, 0.5);
+}
+
+.remote-video-container:focus-visible {
+    outline: 2px solid #4cc9f0;
+    outline-offset: 2px;
+}
+
+.zoom-tile-btn {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid rgba(76, 201, 240, 0.5);
+    background: rgba(76, 201, 240, 0.16);
+    color: #4cc9f0;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.zoom-tile-btn:hover {
+    background: rgba(76, 201, 240, 0.35);
+}
+
+.participant.clickable {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.participant.clickable:hover,
+.participant.clickable:focus-visible {
+    background: rgba(76, 201, 240, 0.18);
+    outline: none;
+}
+
+.participant-media {
+    display: inline-flex;
+    gap: 8px;
+    color: #a9b7c6;
+    font-size: 0.85rem;
+}
+
+.participant-media .off {
+    color: #e63946;
+}
+
+/* Student zoom (spotlight) */
+body.zoom-open {
+    overflow: hidden;
+}
+
+.zoom-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(6, 10, 18, 0.88);
+    backdrop-filter: blur(6px);
+}
+
+.zoom-shell {
+    display: flex;
+    flex-direction: column;
+    width: min(1200px, 96vw);
+    max-height: 94vh;
+    background: #0e1420;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.zoom-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.zoom-identity h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+    font-size: 1.05rem;
+    color: #4cc9f0;
+}
+
+.zoom-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.zoom-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #a9b7c6;
+}
+
+.zoom-chip.off {
+    background: rgba(230, 57, 70, 0.18);
+    color: #ffb3ba;
+}
+
+.zoom-chip-alert {
+    background: rgba(244, 162, 97, 0.25);
+    color: #ffd8b5;
+}
+
+.zoom-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.zoom-icon-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-levels {
+    display: inline-flex;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.zoom-level {
+    padding: 7px 11px;
+    border: none;
+    background: transparent;
+    color: #a9b7c6;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.zoom-level:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.zoom-level.active {
+    background: #4cc9f0;
+    color: #08131c;
+}
+
+.zoom-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 66vh;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: #000;
+}
+
+.zoom-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform-origin: center center;
+    transition: transform 0.18s ease;
+}
+
+.zoom-stage .hand-badge {
+    z-index: 3;
+}
+
+.zoom-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.zoom-position {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: #a9b7c6;
+}
+
+.zoom-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.zoom-strip-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 11px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: #d7e1ea;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.zoom-strip-item:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.zoom-strip-item.active {
+    background: rgba(76, 201, 240, 0.25);
+    border-color: #4cc9f0;
+    color: #fff;
+}
+
+.zoom-strip-item .fa-hand-paper {
+    color: #f4a261;
+}
+
+@media (max-width: 768px) {
+    .console-bar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .zoom-toolbar {
+        padding: 10px 12px;
+    }
+    .zoom-stage {
+        max-height: 52vh;
+    }
+    .zoom-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+
 /* Mobile */
 @media (max-width: 768px) {
     .container { padding: 8px; max-width: 100%; }

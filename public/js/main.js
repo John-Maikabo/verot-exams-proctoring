@@ -56,6 +56,10 @@ class ProctoringApp {
         this._bgGeneration = 0;
         this.screenSharers = new Set();
         this.activePresenterId = null;
+        this.zoomedPeerId = null;
+        this.zoomScale = 1;
+        this._zoomAudioTileId = null;
+        this._zoomTileMuted = false;
         
         // Check for existing proctor session
         this.checkSavedProctorSession();
@@ -520,6 +524,48 @@ class ProctoringApp {
         document.getElementById('recordBtn')?.addEventListener('click', () => this.toggleRecording());
         document.getElementById('sendChatBtn')?.addEventListener('click', () => this.sendChat());
         
+        // Student zoom (spotlight)
+        document.getElementById('zoomCloseBtn')?.addEventListener('click', () => this.closeStudentZoom());
+        document.getElementById('zoomPrevBtn')?.addEventListener('click', () => this.stepStudentZoom(-1));
+        document.getElementById('zoomNextBtn')?.addEventListener('click', () => this.stepStudentZoom(1));
+        document.getElementById('zoomFullscreenBtn')?.addEventListener('click', () => this.toggleZoomFullscreen());
+        document.querySelectorAll('.zoom-level').forEach(btn => {
+            btn.addEventListener('click', () => this.applyZoomLevel(Number(btn.dataset.scale) || 1));
+        });
+        document.getElementById('zoomStrip')?.addEventListener('click', (event) => {
+            const item = event.target.closest('.zoom-strip-item');
+            if (item) this.openStudentZoom(item.dataset.peerId);
+        });
+        const participantList = document.getElementById('participantList');
+        if (participantList) {
+            const zoomFromRow = (row) => this.openStudentZoom(row.dataset.peerId);
+            participantList.addEventListener('click', (event) => {
+                const row = event.target.closest('.participant[data-peer-id]');
+                if (row) zoomFromRow(row);
+            });
+            participantList.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const row = event.target.closest('.participant[data-peer-id]');
+                if (row) {
+                    event.preventDefault();
+                    zoomFromRow(row);
+                }
+            });
+        }
+        document.addEventListener('keydown', (event) => {
+            if (!this.zoomedPeerId) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeStudentZoom();
+            } else if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                this.stepStudentZoom(-1);
+            } else if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                this.stepStudentZoom(1);
+            }
+        });
+        
         // Chat input Enter key
         const chatInput = document.getElementById('chatInput');
         if (chatInput) {
@@ -958,6 +1004,7 @@ class ProctoringApp {
                 this.remoteStreams.clear();
                 this.screenSharers.clear();
                 this.activePresenterId = null;
+                if (this.zoomedPeerId) this.closeStudentZoom();
                 
                 if (data.participants && Array.isArray(data.participants)) {
                     data.participants.forEach(participant => {
@@ -1180,11 +1227,19 @@ class ProctoringApp {
                 ${this.isHandRaised ? '<span class="participant-hand"><i class="fas fa-hand-paper"></i> Hand raised</span>' : ''}
             </div>`;
             
-            this.participants.forEach(participant => {
+            this.participants.forEach((participant, peerId) => {
                 const role = participant.type === 'proctor' ? 'Lecturer' : 'Student';
-                html += `<div class="participant">
+                const media = participant.mediaState || {};
+                const micIcon = media.audio === false ? 'fa-microphone-slash off' : 'fa-microphone';
+                const cameraOff = media.video === false || media.camera === false;
+                const cameraIcon = cameraOff ? 'fa-video-slash off' : 'fa-video';
+                html += `<div class="participant clickable" data-peer-id="${this.escapeHtml(peerId)}" role="button" tabindex="0" title="Zoom in on ${this.escapeHtml(participant.name)}">
                     <i class="fas fa-user${participant.type === 'proctor' ? '-shield' : ''}"></i>
                     <span>${this.escapeHtml(participant.name)} - ${role}</span>
+                    <span class="participant-media">
+                        <i class="fas ${micIcon}"></i>
+                        <i class="fas ${cameraIcon}"></i>
+                    </span>
                     ${participant.isScreenSharing ? '<span class="screen-sharing-badge"><i class="fas fa-desktop"></i> Sharing</span>' : ''}
                     ${participant.handRaised ? '<span class="participant-hand"><i class="fas fa-hand-paper"></i> Hand raised</span>' : ''}
                 </div>`;
@@ -1203,6 +1258,7 @@ class ProctoringApp {
         }
         
         this.layoutParticipantGrid();
+        this.updateConsoleStats();
     }
     
     layoutParticipantGrid() {
@@ -1600,6 +1656,9 @@ class ProctoringApp {
                 }
             }
         }
+        
+        if (this.zoomedPeerId === peerId) this.updateStudentZoom();
+        this.updateConsoleStats();
     }
     
     connectAndPublishTracks(delay = 1000) {
@@ -2312,6 +2371,15 @@ class ProctoringApp {
             videoContainer = document.createElement('div');
             videoContainer.className = 'remote-video-container';
             videoContainer.id = `remoteVideoContainer-${peerId}`;
+            videoContainer.dataset.peerId = peerId;
+            videoContainer.tabIndex = 0;
+            videoContainer.title = `Zoom in on ${peerName}`;
+            videoContainer.addEventListener('click', () => this.openStudentZoom(peerId));
+            videoContainer.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                this.openStudentZoom(peerId);
+            });
             
             // Create header
             const header = document.createElement('div');
@@ -2321,6 +2389,9 @@ class ProctoringApp {
                 <div class="video-stats">
                     <span><i class="fas fa-microphone"></i> <span id="audioStatus-${peerId}">On</span></span>
                     <span><i class="fas fa-video"></i> <span id="videoStatus-${peerId}">On</span></span>
+                    <button type="button" class="zoom-tile-btn" title="Zoom in" aria-label="Zoom in">
+                        <i class="fas fa-magnifying-glass-plus"></i>
+                    </button>
                 </div>
             `;
             
@@ -2418,7 +2489,236 @@ class ProctoringApp {
             console.log(`🗑️ Removing video container for ${peerId}`);
             videoContainer.remove();
         }
+        if (this.zoomedPeerId === peerId) {
+            this.closeStudentZoom();
+        }
         this.remoteStreams.delete(peerId);
+        this.updateConsoleStats();
+    }
+    
+    getStudentEntries() {
+        const entries = [];
+        this.participants.forEach((participant, peerId) => {
+            entries.push({
+                id: peerId,
+                name: participant.name,
+                type: participant.type,
+                handRaised: !!participant.handRaised,
+                mediaState: participant.mediaState || {}
+            });
+        });
+        entries.sort((a, b) => {
+            if (a.handRaised !== b.handRaised) return a.handRaised ? -1 : 1;
+            const aIsStudent = a.type !== 'proctor';
+            const bIsStudent = b.type !== 'proctor';
+            if (aIsStudent !== bIsStudent) return aIsStudent ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+        return entries;
+    }
+    
+    openStudentZoom(peerId) {
+        const participant = this.participants.get(peerId);
+        if (!participant) return;
+        
+        if (this.zoomedPeerId !== peerId) {
+            this.zoomScale = 1;
+        }
+        this.zoomedPeerId = peerId;
+        
+        document.getElementById('studentZoom')?.classList.remove('hidden');
+        document.body.classList.add('zoom-open');
+        this.updateStudentZoom();
+    }
+    
+    closeStudentZoom() {
+        this.zoomedPeerId = null;
+        this.zoomScale = 1;
+        this.restoreZoomAudio();
+        
+        document.getElementById('studentZoom')?.classList.add('hidden');
+        document.body.classList.remove('zoom-open');
+        
+        const video = document.getElementById('zoomVideo');
+        if (video) {
+            video.pause();
+            video.srcObject = null;
+        }
+    }
+    
+    stepStudentZoom(direction) {
+        const entries = this.getStudentEntries();
+        if (!entries.length) return;
+        
+        const currentIndex = entries.findIndex(entry => entry.id === this.zoomedPeerId);
+        const nextIndex = currentIndex === -1
+            ? 0
+            : (currentIndex + direction + entries.length) % entries.length;
+        this.openStudentZoom(entries[nextIndex].id);
+    }
+    
+    applyZoomLevel(scale) {
+        this.zoomScale = scale;
+        
+        const video = document.getElementById('zoomVideo');
+        if (video) {
+            video.style.transform = scale > 1 ? `scale(${scale})` : 'none';
+            video.style.objectFit = scale > 1 ? 'cover' : 'contain';
+        }
+        
+        document.querySelectorAll('.zoom-level').forEach(btn => {
+            btn.classList.toggle('active', Number(btn.dataset.scale) === scale);
+        });
+    }
+    
+    toggleZoomFullscreen() {
+        const shell = document.querySelector('.zoom-shell');
+        if (!shell) return;
+        
+        if (document.fullscreenElement) {
+            document.exitFullscreen?.().catch(() => {});
+        } else {
+            shell.requestFullscreen?.().catch(() => {});
+        }
+    }
+    
+    syncZoomAudio() {
+        if (this._zoomAudioTileId === this.zoomedPeerId) return;
+        this.restoreZoomAudio();
+        if (!this.zoomedPeerId) return;
+        
+        // The grid tile already plays this peer's audio; mute it while the
+        // spotlight copy plays so the invigilator does not hear double.
+        const tile = document.getElementById(`remoteVideo-${this.zoomedPeerId}`);
+        if (tile) {
+            this._zoomTileMuted = tile.muted;
+            tile.muted = true;
+        }
+        this._zoomAudioTileId = this.zoomedPeerId;
+    }
+    
+    restoreZoomAudio() {
+        if (!this._zoomAudioTileId) return;
+        const tile = document.getElementById(`remoteVideo-${this._zoomAudioTileId}`);
+        if (tile) tile.muted = this._zoomTileMuted;
+        this._zoomAudioTileId = null;
+    }
+    
+    updateStudentZoom() {
+        if (!this.zoomedPeerId) return;
+        
+        const participant = this.participants.get(this.zoomedPeerId);
+        if (!participant) {
+            this.closeStudentZoom();
+            return;
+        }
+        
+        this.syncZoomAudio();
+        
+        const stream = this.remoteStreams.get(this.zoomedPeerId);
+        const media = participant.mediaState || {};
+        const hasVideoTrack = !!(
+            stream &&
+            stream.getVideoTracks().some(track => track.readyState === 'live')
+        );
+        const hasLiveVideo = hasVideoTrack && media.video !== false;
+        const audioMuted = media.audio === false;
+        
+        const nameEl = document.getElementById('zoomName');
+        if (nameEl) {
+            nameEl.innerHTML = `<i class="fas fa-user${participant.type === 'proctor' ? '-shield' : ''}"></i> ${this.escapeHtml(participant.name)}`;
+        }
+        
+        const micChip = document.getElementById('zoomMicChip');
+        if (micChip) {
+            micChip.classList.toggle('off', audioMuted);
+            micChip.innerHTML = `<i class="fas fa-microphone${audioMuted ? '-slash' : ''}"></i> ${audioMuted ? 'Muted' : 'Mic on'}`;
+        }
+        
+        const camChip = document.getElementById('zoomCamChip');
+        if (camChip) {
+            camChip.classList.toggle('off', !hasLiveVideo);
+            camChip.innerHTML = `<i class="fas fa-video${hasLiveVideo ? '' : '-slash'}"></i> ${hasLiveVideo ? 'Camera on' : 'Camera off'}`;
+        }
+        
+        document.getElementById('zoomHandChip')?.classList.toggle('hidden', !participant.handRaised);
+        document.getElementById('zoomHandBadge')?.classList.toggle('hidden', !participant.handRaised);
+        
+        const video = document.getElementById('zoomVideo');
+        if (video) {
+            if (stream && video.srcObject !== stream) {
+                video.srcObject = stream;
+            }
+            video.muted = false;
+            video.play().catch(() => {
+                video.muted = true;
+                video.play().catch(() => {});
+            });
+        }
+        
+        const placeholder = document.getElementById('zoomPlaceholder');
+        if (placeholder) {
+            placeholder.classList.toggle('hidden', hasLiveVideo);
+            const text = document.getElementById('zoomPlaceholderText');
+            if (text) {
+                if (media.camera === false) {
+                    text.textContent = 'Audio only';
+                } else if (media.video === false) {
+                    text.textContent = 'Camera off';
+                } else {
+                    text.textContent = hasLiveVideo ? 'Camera on' : 'Camera off';
+                }
+            }
+        }
+        
+        const entries = this.getStudentEntries();
+        const currentIndex = entries.findIndex(entry => entry.id === this.zoomedPeerId);
+        const positionEl = document.getElementById('zoomPosition');
+        if (positionEl) {
+            positionEl.textContent = `Participant ${currentIndex + 1} of ${entries.length}`;
+        }
+        
+        const strip = document.getElementById('zoomStrip');
+        if (strip) {
+            strip.innerHTML = entries.map(entry => `
+                <button type="button" class="zoom-strip-item${entry.id === this.zoomedPeerId ? ' active' : ''}" data-peer-id="${this.escapeHtml(entry.id)}">
+                    <i class="fas fa-user${entry.type === 'proctor' ? '-shield' : ''}"></i>
+                    <span>${this.escapeHtml(entry.name)}</span>
+                    ${entry.handRaised ? '<i class="fas fa-hand-paper"></i>' : ''}
+                    ${entry.mediaState.video === false ? '<i class="fas fa-video-slash"></i>' : ''}
+                </button>
+            `).join('');
+        }
+        
+        this.applyZoomLevel(this.zoomScale);
+    }
+    
+    updateConsoleStats() {
+        const studentsEl = document.getElementById('statStudents');
+        if (!studentsEl) return;
+        
+        let students = 0;
+        let cameras = 0;
+        let hands = 0;
+        
+        this.participants.forEach((participant, peerId) => {
+            if (participant.type === 'proctor') return;
+            students += 1;
+            const media = participant.mediaState || {};
+            const stream = this.remoteStreams.get(peerId);
+            const hasLiveVideo = !!(stream && stream.getVideoTracks().some(track => track.readyState === 'live'));
+            if (hasLiveVideo && media.video !== false) cameras += 1;
+            if (participant.handRaised) hands += 1;
+        });
+        
+        studentsEl.textContent = students;
+        const camerasEl = document.getElementById('statCameras');
+        if (camerasEl) camerasEl.textContent = cameras;
+        const handsEl = document.getElementById('statHands');
+        if (handsEl) {
+            handsEl.textContent = hands;
+            handsEl.closest('.console-stat')?.classList.toggle('has-alert', hands > 0);
+        }
     }
     
     setPeerStatus(peerId, text) {
@@ -2905,6 +3205,9 @@ class ProctoringApp {
             const badge = document.getElementById(`handBadge-${peerId}`);
             if (badge) badge.classList.toggle('hidden', !participant.handRaised);
         });
+        
+        if (this.zoomedPeerId) this.updateStudentZoom();
+        this.updateConsoleStats();
     }
     
     sendReaction(emoji) {
@@ -3506,6 +3809,7 @@ class ProctoringApp {
         });
         this.peerConnections.clear();
         this.remoteStreams.clear();
+        if (this.zoomedPeerId) this.closeStudentZoom();
         
         if (this.signaling) {
             this.signaling.close();

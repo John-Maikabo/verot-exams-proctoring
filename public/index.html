@@ -181,7 +181,20 @@
             
             <!-- Right Panel - Videos & Tools -->
             <div class="panel video-panel">
-                <h2><i class="fas fa-video"></i> Video Streams</h2>
+                <div class="console-bar">
+                    <h2><i class="fas fa-shield-halved"></i> Invigilation Console</h2>
+                    <div class="console-stats">
+                        <span class="console-stat">
+                            <i class="fas fa-user-graduate"></i> <strong id="statStudents">0</strong> students
+                        </span>
+                        <span class="console-stat">
+                            <i class="fas fa-video"></i> <strong id="statCameras">0</strong> on camera
+                        </span>
+                        <span class="console-stat console-stat-alert">
+                            <i class="fas fa-hand-paper"></i> <strong id="statHands">0</strong> hands
+                        </span>
+                    </div>
+                </div>
                 
                 <div class="video-content" id="videoContent">
                     <!-- Shared screen takes over this stage -->
@@ -218,7 +231,8 @@
                         
                         <!-- Remote Videos Container -->
                         <div id="remoteVideosTitle" class="hidden">
-                            <h3><i class="fas fa-users"></i> Other Participants</h3>
+                            <h3><i class="fas fa-users"></i> Students</h3>
+                            <span class="console-hint"><i class="fas fa-magnifying-glass-plus"></i> Click a student to zoom in</span>
                         </div>
                         <div id="remoteVideosContainer" class="video-grid-container">
                             <!-- Remote videos will be added here dynamically -->
@@ -244,6 +258,53 @@
                 </div>
             </div>
         </main>
+        
+        <!-- Student Zoom (spotlight) -->
+        <div id="studentZoom" class="zoom-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="zoomName">
+            <div class="zoom-shell">
+                <div class="zoom-toolbar">
+                    <div class="zoom-identity">
+                        <h3 id="zoomName"><i class="fas fa-user"></i> Student</h3>
+                        <div class="zoom-chips">
+                            <span class="zoom-chip" id="zoomMicChip"><i class="fas fa-microphone"></i> Mic on</span>
+                            <span class="zoom-chip" id="zoomCamChip"><i class="fas fa-video"></i> Camera on</span>
+                            <span class="zoom-chip zoom-chip-alert hidden" id="zoomHandChip"><i class="fas fa-hand-paper"></i> Hand raised</span>
+                        </div>
+                    </div>
+                    <div class="zoom-actions">
+                        <button id="zoomPrevBtn" class="btn btn-secondary zoom-icon-btn" title="Previous student (←)">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button id="zoomNextBtn" class="btn btn-secondary zoom-icon-btn" title="Next student (→)">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                        <div class="zoom-levels" id="zoomLevels" role="group" aria-label="Zoom level">
+                            <button type="button" class="zoom-level active" data-scale="1">1x</button>
+                            <button type="button" class="zoom-level" data-scale="2">2x</button>
+                            <button type="button" class="zoom-level" data-scale="3">3x</button>
+                        </div>
+                        <button id="zoomFullscreenBtn" class="btn btn-secondary zoom-icon-btn" title="Fullscreen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button id="zoomCloseBtn" class="btn btn-danger zoom-icon-btn" title="Back to all students (Esc)">
+                            <i class="fas fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="zoom-stage" id="zoomStage">
+                    <video id="zoomVideo" autoplay playsinline></video>
+                    <div class="video-placeholder hidden" id="zoomPlaceholder">
+                        <i class="fas fa-user"></i>
+                        <span id="zoomPlaceholderText">Camera off</span>
+                    </div>
+                    <div class="hand-badge hidden" id="zoomHandBadge"><i class="fas fa-hand-paper"></i> Hand raised</div>
+                </div>
+                <div class="zoom-footer">
+                    <span class="zoom-position" id="zoomPosition">Student 1 of 1</span>
+                    <div class="zoom-strip" id="zoomStrip"></div>
+                </div>
+            </div>
+        </div>
         
         <!-- Join Modal -->
         <div id="joinModal" class="modal hidden">
