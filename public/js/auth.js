@@ -21,7 +21,8 @@
         students: [],
         editingTeamId: null,
         csvRows: [],
-        csvFileName: ''
+        csvFileName: '',
+        importing: false
     };
 
     const el = id => document.getElementById(id);
@@ -453,8 +454,6 @@
         state.csvRows = [];
         state.csvFileName = '';
         if (!file) return;
-        const importBtn = el('studentCsvImport');
-        if (importBtn) importBtn.disabled = true;
         renderImportSummary('');
 
         if (file.size > 2 * 1024 * 1024) {
@@ -478,16 +477,19 @@
                 `<i class="fas fa-file-csv"></i> <strong>${students.length}</strong> students ready from ${escapeHtml(file.name)}.${warning}`,
                 'ready'
             );
-            if (importBtn) importBtn.disabled = false;
         } catch (error) {
             renderImportSummary(`<i class="fas fa-triangle-exclamation"></i> ${escapeHtml(error.message)}`, 'error');
         }
     }
 
     async function importStudents() {
-        if (!state.csvRows.length) return;
-        const importBtn = el('studentCsvImport');
-        if (importBtn) importBtn.disabled = true;
+        if (state.importing) return;
+        if (!state.csvRows.length) {
+            toast('Choose a CSV file first', 'info');
+            el('studentCsvInput')?.click();
+            return;
+        }
+        state.importing = true;
         try {
             const data = await api('/api/students/import', {
                 method: 'POST',
@@ -513,7 +515,7 @@
         } catch (error) {
             renderImportSummary(`<i class="fas fa-triangle-exclamation"></i> ${escapeHtml(error.message)}`, 'error');
         } finally {
-            if (importBtn) importBtn.disabled = !state.csvRows.length;
+            state.importing = false;
         }
     }
 

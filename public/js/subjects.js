@@ -5,7 +5,8 @@
     const state = {
         subjects: [],
         editingId: null,
-        csvRows: []
+        csvRows: [],
+        importing: false
     };
 
     const el = id => document.getElementById(id);
@@ -262,8 +263,6 @@
 
     async function onCsvSelected(file) {
         state.csvRows = [];
-        const importBtn = el('subjectCsvImport');
-        if (importBtn) importBtn.disabled = true;
         renderImportSummary('');
 
         if (!file) return;
@@ -285,16 +284,19 @@
                 `<i class="fas fa-file-csv"></i> <strong>${subjects.length}</strong> subjects ready from ${escapeHtml(file.name)}.${warning}`,
                 'ready'
             );
-            if (importBtn) importBtn.disabled = false;
         } catch (error) {
             renderImportSummary(`<i class="fas fa-triangle-exclamation"></i> ${escapeHtml(error.message)}`, 'error');
         }
     }
 
     async function importSubjects() {
-        if (!state.csvRows.length) return;
-        const importBtn = el('subjectCsvImport');
-        if (importBtn) importBtn.disabled = true;
+        if (state.importing) return;
+        if (!state.csvRows.length) {
+            toast('Choose a CSV file first', 'info');
+            el('subjectCsvInput')?.click();
+            return;
+        }
+        state.importing = true;
 
         try {
             const data = await api('/api/subjects/import', {
@@ -323,7 +325,7 @@
         } catch (error) {
             renderImportSummary(`<i class="fas fa-triangle-exclamation"></i> ${escapeHtml(error.message)}`, 'error');
         } finally {
-            if (importBtn) importBtn.disabled = !state.csvRows.length;
+            state.importing = false;
         }
     }
 
