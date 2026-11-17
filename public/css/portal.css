@@ -2400,8 +2400,52 @@ body.auth-page {
     margin-top: 6px;
 }
 
+.draft-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.draft-marks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--p-muted, #64748b);
+}
+
 .draft-marks input {
-    max-width: 130px;
+    width: 76px;
+    padding: 6px 8px;
+}
+
+.draft-add-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.draft-add-row .btn {
+    flex: 1 1 190px;
+    justify-content: center;
+}
+
+.draft-empty {
+    margin: 0;
+    padding: 18px;
+    border: 1px dashed var(--p-border);
+    border-radius: 12px;
+    text-align: center;
+    color: var(--p-muted, #64748b);
+}
+
+.draft-card .draft-head-actions .btn-small {
+    white-space: nowrap;
 }
 
 .draft-card .option-editor {

@@ -27,6 +27,7 @@
         autoSubmitted: false,
         editingQuestionId: null,
         questionDrafts: [],
+        questionSubjectId: '',
         bankLoading: false,
         examsLoading: false,
         lastRoomId: null
@@ -139,6 +140,8 @@
                 .map(subject => `<option value="${escapeAttr(subject.name)}"></option>`)
                 .join('');
         }
+
+        renderQuestionSubject();
     }
 
     function filteredQuestions() {
@@ -208,14 +211,26 @@
         `).join('');
     }
 
-    // A question being written in the editor; several can be saved in one pass
-    function emptyDraft() {
-        return { subjectId: '', type: 'multiple', marks: 1, prompt: '', options: ['', '', '', ''], correct: [] };
+    // A question being written in the editor; several can be saved in one pass against one subject
+    function emptyDraft(type = 'multiple') {
+        const draft = {
+            type: QUESTION_TYPES.includes(type) ? type : 'multiple',
+            marks: 1,
+            prompt: '',
+            options: ['', '', '', ''],
+            correct: []
+        };
+        if (draft.type === 'short') {
+            draft.options = [];
+            draft.correct = [];
+        } else if (draft.type === 'truefalse') {
+            draft.options = ['True', 'False'];
+        }
+        return draft;
     }
 
     function draftFromQuestion(question) {
         return {
-            subjectId: question.subjectId || '',
             type: QUESTION_TYPES.includes(question.type) ? question.type : 'multiple',
             marks: question.marks || 1,
             prompt: question.prompt || '',
@@ -228,15 +243,23 @@
         return subject.code ? `${subject.code} - ${subject.name}` : subject.name;
     }
 
-    function subjectSelectMarkup(selectedId) {
-        if (!state.subjects.length) {
-            return '<option value="">No subjects yet - add one in the Subjects tab</option>';
-        }
-        return ['<option value="">Select a subject</option>']
-            .concat(state.subjects.map(subject =>
-                `<option value="${escapeAttr(subject.id)}"${subject.id === selectedId ? ' selected' : ''}>${escapeHtml(subjectLabel(subject))}</option>`
-            ))
-            .join('');
+    // The subject is chosen once for the whole batch of questions
+    function renderQuestionSubject() {
+        const select = el('questionSubject');
+        if (!select || state.editingQuestionId) return;
+        const options = state.subjects.length
+            ? ['<option value="">Select a subject</option>'].concat(state.subjects.map(subject =>
+                `<option value="${escapeAttr(subject.id)}"${subject.id === state.questionSubjectId ? ' selected' : ''}>${escapeHtml(subjectLabel(subject))}</option>`
+            )).join('')
+            : '<option value="">No subjects yet - add one in the Subjects tab</option>';
+        select.innerHTML = options;
+        select.value = state.questionSubjectId;
+    }
+
+    function typeHint(type) {
+        if (type === 'short') return 'Students type a free-text answer. The invigilator marks it manually.';
+        if (type === 'truefalse') return 'Tick whether the statement is true or false.';
+        return 'Tick all correct answers.';
     }
 
     function draftCardMarkup(draft, index) {
@@ -247,6 +270,12 @@
         const options = isTrueFalse ? ['True', 'False'] : draft.options.slice(0, 8);
         const canAddOption = !isShort && !isTrueFalse && options.length < 8;
 
+        const marksControl = `
+            <label class="draft-marks">
+                <span>Marks</span>
+                <input type="number" min="1" max="20" data-field="marks" value="${draft.marks}">
+            </label>`;
+
         const optionRows = isShort ? '' : options.map((value, optionIndex) => `
             <div class="option-row" data-option-index="${optionIndex}">
                 <input type="${inputType}" name="correct-${index}" data-correct="${optionIndex}" ${draft.correct.includes(optionIndex) ? 'checked' : ''} aria-label="Correct answer">
@@ -255,26 +284,13 @@
             </div>`).join('');
 
         return `
-            <article class="draft-card" data-draft-index="${index}">
+            <article class="draft-card" data-draft-index="${index}" data-draft-type="${draft.type}">
                 <div class="draft-head">
-                    <h3><span class="draft-number">Q${index + 1}</span> ${editing ? 'Edit question' : 'New question'}</h3>
-                    ${editing ? '' : '<button type="button" class="icon-btn icon-danger" data-action="remove-draft" title="Remove this question"><i class="fas fa-trash"></i></button>'}
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Subject <span class="required-star">*</span></label>
-                        <select data-field="subject">${subjectSelectMarkup(draft.subjectId)}</select>
+                    <h3><span class="draft-number">Q${index + 1}</span> ${typeLabel(draft.type)}</h3>
+                    <div class="draft-head-actions">
+                        ${marksControl}
+                        ${editing ? '' : '<button type="button" class="btn btn-danger btn-small" data-action="remove-draft" title="Delete this question"><i class="fas fa-trash"></i> Delete</button>'}
                     </div>
-                    <div class="form-group">
-                        <label>Type</label>
-                        <select data-field="type">
-                            ${QUESTION_TYPES.map(type => `<option value="${type}"${type === draft.type ? ' selected' : ''}>${typeLabel(type)}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group draft-marks">
-                    <label>Marks</label>
-                    <input type="number" min="1" max="20" data-field="marks" value="${draft.marks}">
                 </div>
                 <div class="form-group">
                     <label>Question <span class="required-star">*</span></label>
@@ -286,17 +302,21 @@
                     <button type="button" class="btn btn-secondary btn-small${canAddOption ? '' : ' hidden'}" data-action="add-option">
                         <i class="fas fa-plus"></i> Add option
                     </button>
-                    <p class="form-hint">${draft.type === 'multiple' ? 'Tick all correct answers.' : 'Tick the correct answer.'}</p>
+                    <p class="form-hint">${typeHint(draft.type)}</p>
                 </div>
+                <p class="form-hint${isShort ? '' : ' hidden'}">${typeHint('short')}</p>
             </article>`;
     }
 
     function renderDraftList() {
         const container = el('questionDrafts');
         if (!container) return;
-        container.innerHTML = state.questionDrafts.map((draft, index) => draftCardMarkup(draft, index)).join('');
-        const addBtn = el('addDraftQuestionBtn');
-        if (addBtn) addBtn.classList.toggle('hidden', !!state.editingQuestionId);
+        renderQuestionSubject();
+        container.innerHTML = state.questionDrafts.length
+            ? state.questionDrafts.map((draft, index) => draftCardMarkup(draft, index)).join('')
+            : '<p class="draft-empty">No questions yet. Use the buttons below to add one.</p>';
+        const addRow = el('draftAddRow');
+        if (addRow) addRow.classList.toggle('hidden', !!state.editingQuestionId);
         updateDraftSaveLabel();
     }
 
@@ -304,6 +324,7 @@
         const btn = el('questionSaveBtn');
         if (!btn) return;
         const count = state.questionDrafts.length;
+        btn.disabled = !state.editingQuestionId && count === 0;
         btn.innerHTML = state.editingQuestionId
             ? '<i class="fas fa-floppy-disk"></i> Save question'
             : `<i class="fas fa-floppy-disk"></i> Save ${count} question${count === 1 ? '' : 's'}`;
@@ -319,10 +340,8 @@
         const card = draftCardElement(index);
         if (!draft || !card) return draft;
 
-        const subjectField = card.querySelector('[data-field="subject"]');
         const marksField = card.querySelector('[data-field="marks"]');
         const promptField = card.querySelector('[data-field="prompt"]');
-        if (subjectField) draft.subjectId = subjectField.value;
         if (marksField) draft.marks = Number(marksField.value) || 1;
         if (promptField) draft.prompt = promptField.value;
 
@@ -361,36 +380,36 @@
             : '<i class="fas fa-plus"></i> New questions';
 
         if (question) {
+            state.questionSubjectId = question.subjectId || '';
             state.questionDrafts = [draftFromQuestion(question)];
         } else {
-            const draft = emptyDraft();
-            if (state.subjects.length === 1) draft.subjectId = state.subjects[0].id;
-            state.questionDrafts = [draft];
+            state.questionSubjectId = state.subjects.length === 1 ? state.subjects[0].id : '';
+            state.questionDrafts = [emptyDraft('multiple')];
         }
 
         renderDraftList();
         el('questionModal').classList.remove('hidden');
-        const prompt = el('questionDrafts').querySelector('[data-field="prompt"]');
-        if (prompt) prompt.focus();
+        const target = state.questionSubjectId
+            ? el('questionDrafts').querySelector('[data-field="prompt"]')
+            : el('questionSubject');
+        if (target) target.focus();
     }
 
     function closeQuestionEditor() {
         el('questionModal').classList.add('hidden');
         state.editingQuestionId = null;
         state.questionDrafts = [];
+        state.questionSubjectId = '';
     }
 
-    function addDraft() {
+    function addDraft(type) {
         syncAllDrafts();
         if (state.questionDrafts.length >= 20) {
             toast('Add at most 20 questions at a time', 'error');
             return;
         }
 
-        const draft = emptyDraft();
-        const previous = state.questionDrafts[state.questionDrafts.length - 1];
-        draft.subjectId = previous && previous.subjectId ? previous.subjectId : '';
-        state.questionDrafts.push(draft);
+        state.questionDrafts.push(emptyDraft(type));
         renderDraftList();
 
         const cards = el('questionDrafts').querySelectorAll('.draft-card');
@@ -404,31 +423,8 @@
 
     function removeDraft(index) {
         syncAllDrafts();
-        if (state.questionDrafts.length <= 1) {
-            toast('Keep at least one question', 'error');
-            return;
-        }
         state.questionDrafts.splice(index, 1);
         renderDraftList();
-    }
-
-    function changeDraftType(index, type) {
-        syncAllDrafts();
-        const draft = state.questionDrafts[index];
-        if (!draft) return;
-
-        draft.type = QUESTION_TYPES.includes(type) ? type : 'multiple';
-        if (draft.type === 'short') {
-            draft.options = [];
-            draft.correct = [];
-        } else if (draft.type === 'truefalse') {
-            draft.options = ['True', 'False'];
-            draft.correct = draft.correct.filter(optionIndex => optionIndex < 2).slice(0, 1);
-        } else {
-            if (!draft.options.length) draft.options = ['', '', '', ''];
-            draft.correct = draft.correct.filter(optionIndex => optionIndex < draft.options.length);
-        }
-        renderDraftCard(index);
     }
 
     function addDraftOption(index) {
@@ -462,13 +458,13 @@
 
     function draftPayload(draft, index) {
         const label = `Question ${index + 1}`;
-        if (!draft.subjectId) throw new Error(`${label}: select a subject`);
+        if (!state.questionSubjectId) throw new Error('Select a subject for these questions');
 
         const prompt = String(draft.prompt || '').trim();
         if (!prompt) throw new Error(`${label}: add the question text`);
 
         const payload = {
-            subjectId: draft.subjectId,
+            subjectId: state.questionSubjectId,
             type: draft.type,
             prompt,
             marks: Math.min(20, Math.max(1, Number(draft.marks) || 1)),
@@ -503,6 +499,10 @@
         }
 
         syncAllDrafts();
+        if (!state.editingQuestionId && !state.questionDrafts.length) {
+            toast('Add at least one question first', 'error');
+            return;
+        }
         const submitBtn = el('questionSaveBtn');
         if (submitBtn) submitBtn.disabled = true;
 
@@ -532,7 +532,6 @@
                 const failed = new Set((summary.errors || []).map(error => error.index));
                 const firstError = (summary.errors || [])[0];
                 state.questionDrafts = state.questionDrafts.filter((draft, index) => failed.has(index));
-                if (!state.questionDrafts.length) state.questionDrafts = [emptyDraft()];
                 renderDraftList();
                 await loadBank();
                 toast(
@@ -553,7 +552,7 @@
         } catch (error) {
             toast(`❌ ${error.message}`, 'error');
         } finally {
-            if (submitBtn) submitBtn.disabled = false;
+            updateDraftSaveLabel();
         }
     }
 
@@ -1401,7 +1400,12 @@
 
         el('questionForm')?.addEventListener('submit', saveQuestion);
         el('cancelQuestionBtn')?.addEventListener('click', closeQuestionEditor);
-        el('addDraftQuestionBtn')?.addEventListener('click', addDraft);
+        el('questionSubject')?.addEventListener('change', event => {
+            state.questionSubjectId = event.target.value;
+        });
+        el('addMultipleChoiceBtn')?.addEventListener('click', () => addDraft('multiple'));
+        el('addEssayBtn')?.addEventListener('click', () => addDraft('short'));
+        el('addTrueFalseBtn')?.addEventListener('click', () => addDraft('truefalse'));
 
         el('questionDrafts')?.addEventListener('input', event => {
             const field = event.target.closest('[data-draft-index]');
@@ -1415,14 +1419,6 @@
             if (!card) return;
             const index = Number(card.dataset.draftIndex);
 
-            if (event.target.matches('[data-field="subject"]')) {
-                syncDraftFromCard(index);
-                return;
-            }
-            if (event.target.matches('[data-field="type"]')) {
-                changeDraftType(index, event.target.value);
-                return;
-            }
             syncDraftFromCard(index);
         });
 

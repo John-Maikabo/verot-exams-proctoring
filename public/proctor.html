@@ -698,10 +698,23 @@
             <div class="modal-content modal-wide">
                 <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New questions</h2>
                 <form id="questionForm">
+                    <div class="form-group">
+                        <label for="questionSubject">Subject <span class="required-star">*</span></label>
+                        <select id="questionSubject"></select>
+                        <p class="form-hint">Chosen once - every question below is saved to this subject.</p>
+                    </div>
                     <div class="draft-list" id="questionDrafts"></div>
-                    <button type="button" id="addDraftQuestionBtn" class="btn btn-secondary btn-block">
-                        <i class="fas fa-plus"></i> Add another question
-                    </button>
+                    <div class="draft-add-row" id="draftAddRow">
+                        <button type="button" id="addMultipleChoiceBtn" class="btn btn-secondary">
+                            <i class="fas fa-list-check"></i> Add multiple choice question
+                        </button>
+                        <button type="button" id="addEssayBtn" class="btn btn-secondary">
+                            <i class="fas fa-pen-line"></i> Add essay question
+                        </button>
+                        <button type="button" id="addTrueFalseBtn" class="btn btn-secondary">
+                            <i class="fas fa-toggle-on"></i> Add true/false question
+                        </button>
+                    </div>
                     <div class="modal-buttons">
                         <button type="button" id="cancelQuestionBtn" class="btn btn-secondary">Cancel</button>
                         <button type="submit" id="questionSaveBtn" class="btn btn-primary">
