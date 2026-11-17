@@ -5,6 +5,7 @@
     const PERMISSION_LABELS = {
         invigilation: 'Invigilation',
         questions: 'Create exam questions',
+        subjects: 'Manage subjects',
         quizzes: 'Create quizzes',
         users: 'Create users',
         students: 'Upload students'

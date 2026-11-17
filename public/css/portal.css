@@ -2331,3 +2331,79 @@ body.auth-page {
         flex-wrap: wrap;
     }
 }
+
+/* ==================== SUBJECT CATALOGUE AND MULTI-QUESTION EDITOR ==================== */
+
+.subject-list {
+    margin-top: 16px;
+}
+
+.subject-row-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.draft-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 14px;
+    max-height: 62vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.draft-card {
+    border: 1px solid var(--p-border);
+    border-radius: 12px;
+    padding: 14px;
+    background: var(--p-surface-2);
+}
+
+.draft-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.draft-head h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.draft-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #1d4ed8;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.draft-card .form-group {
+    margin-bottom: 10px;
+}
+
+.draft-card .form-hint {
+    margin-top: 6px;
+}
+
+.draft-marks input {
+    max-width: 130px;
+}
+
+.draft-card .option-editor {
+    margin-bottom: 0;
+}

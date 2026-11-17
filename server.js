@@ -567,6 +567,37 @@ app.get('/health', (req, res) => {
     });
 });
 
+// ==================== SUBJECT CATALOGUE API ====================
+
+// Anyone who writes questions or papers needs to read the catalogue
+app.get('/api/subjects', requireAnyPermission(['subjects', 'questions', 'quizzes']), asyncRoute(async (req, res) => {
+    res.json({
+        success: true,
+        subjects: await examStore.listSubjects(req.staff.companyId),
+        storage: examStore.storageName
+    });
+}));
+
+app.post('/api/subjects', requireStaff('subjects'), asyncRoute(async (req, res) => {
+    const subject = await examStore.createSubject(req.staff.companyId, req.body || {});
+    res.status(201).json({ success: true, subject });
+}));
+
+app.post('/api/subjects/import', requireStaff('subjects'), asyncRoute(async (req, res) => {
+    const summary = await examStore.importSubjects(req.staff.companyId, req.body && req.body.subjects);
+    res.json({ success: true, summary });
+}));
+
+app.put('/api/subjects/:id', requireStaff('subjects'), asyncRoute(async (req, res) => {
+    const subject = await examStore.updateSubject(req.staff.companyId, req.params.id, req.body || {});
+    res.json({ success: true, subject });
+}));
+
+app.delete('/api/subjects/:id', requireStaff('subjects'), asyncRoute(async (req, res) => {
+    await examStore.deleteSubject(req.staff.companyId, req.params.id);
+    res.json({ success: true });
+}));
+
 // ==================== QUESTION BANK API ====================
 
 app.get('/api/questions', requireAnyPermission(['questions', 'quizzes']), asyncRoute(async (req, res) => {
@@ -588,6 +619,12 @@ app.get('/api/questions/subjects', requireAnyPermission(['questions', 'quizzes']
 app.post('/api/questions', requireStaff('questions'), asyncRoute(async (req, res) => {
     const question = await examStore.createQuestion(req.staff.companyId, req.body || {});
     res.status(201).json({ success: true, question });
+}));
+
+// Write several questions in one submission; each row is validated on its own
+app.post('/api/questions/batch', requireStaff('questions'), asyncRoute(async (req, res) => {
+    const summary = await examStore.createQuestions(req.staff.companyId, req.body && req.body.questions);
+    res.status(201).json({ success: true, summary });
 }));
 
 app.put('/api/questions/:id', requireStaff('questions'), asyncRoute(async (req, res) => {

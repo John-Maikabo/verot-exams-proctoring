@@ -2,6 +2,8 @@
 
 WebRTC proctoring sessions: a proctor creates a room, shares the link, and candidates join a mesh video call with chat, screen sharing, and snapshot capture.
 
+Each institution keeps a subject catalogue (created by hand or imported from CSV). Questions are written against a subject and can be added several at a time, then assembled into papers and delivered to a live session.
+
 ## Requirements
 
 - Node.js 18+

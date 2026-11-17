@@ -589,45 +589,18 @@
             </div>
         </div>
 
-        <!-- Question editor -->
+        <!-- Question editor: several questions can be written in one pass -->
         <div id="questionModal" class="modal hidden">
             <div class="modal-content modal-wide">
-                <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New question</h2>
+                <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New questions</h2>
                 <form id="questionForm">
-                    <input type="hidden" id="questionId">
-                    <div class="form-group">
-                        <label for="questionSubject">Subject <span class="required-star">*</span></label>
-                        <input id="questionSubject" list="subjectOptions" maxlength="80" required>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="questionType">Type</label>
-                            <select id="questionType">
-                                <option value="multiple">Multiple choice</option>
-                                <option value="truefalse">True / false</option>
-                                <option value="short">Essay</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="questionMarks">Marks</label>
-                            <input id="questionMarks" type="number" min="1" max="20" value="1">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="questionPrompt">Question <span class="required-star">*</span></label>
-                        <textarea id="questionPrompt" rows="3" maxlength="2000" required></textarea>
-                    </div>
-                    <div class="form-group" id="questionOptionsGroup">
-                        <label>Answer options</label>
-                        <div id="questionOptions" class="option-editor"></div>
-                        <button type="button" id="addOptionBtn" class="btn btn-secondary btn-small">
-                            <i class="fas fa-plus"></i> Add option
-                        </button>
-                        <p class="form-hint" id="questionOptionsHint">Tick the correct answer.</p>
-                    </div>
+                    <div class="draft-list" id="questionDrafts"></div>
+                    <button type="button" id="addDraftQuestionBtn" class="btn btn-secondary btn-block">
+                        <i class="fas fa-plus"></i> Add another question
+                    </button>
                     <div class="modal-buttons">
                         <button type="button" id="cancelQuestionBtn" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" id="questionSaveBtn" class="btn btn-primary">
                             <i class="fas fa-floppy-disk"></i> Save question
                         </button>
                     </div>

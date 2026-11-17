@@ -250,6 +250,9 @@
                     <button type="button" class="workspace-tab" data-workspace="bank" data-permission-tab="questions,quizzes" role="tab" aria-selected="false">
                         <i class="fas fa-book-open"></i> Question bank <span class="tab-count" id="bankCount">0</span>
                     </button>
+                    <button type="button" class="workspace-tab" data-workspace="subjects" data-permission-tab="subjects" role="tab" aria-selected="false">
+                        <i class="fas fa-layer-group"></i> Subjects <span class="tab-count" id="subjectCount">0</span>
+                    </button>
                     <button type="button" class="workspace-tab" data-workspace="exams" data-permission-tab="quizzes,invigilation" role="tab" aria-selected="false">
                         <i class="fas fa-file-pen"></i> Exam setup
                     </button>
@@ -383,6 +386,40 @@
                         <h3>No questions yet</h3>
                         <p>Add your first question to start building the bank.</p>
                     </div>
+                </div>
+
+                <div class="workspace-panel hidden" id="workspaceSubjects" data-workspace-panel="subjects" data-role="proctor-only">
+                    <div class="workspace-head">
+                        <div>
+                            <h2><i class="fas fa-layer-group"></i> Subjects</h2>
+                            <p class="workspace-sub">Create the subjects your questions belong to. Questions pick from this list by name and code.</p>
+                        </div>
+                        <button type="button" id="newSubjectBtn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> New subject
+                        </button>
+                    </div>
+
+                    <div class="student-upload-card">
+                        <div class="upload-head">
+                            <h3><i class="fas fa-file-csv"></i> Import from CSV</h3>
+                            <button type="button" id="subjectCsvTemplate" class="link-btn">
+                                <i class="fas fa-download"></i> Download template
+                            </button>
+                        </div>
+                        <p class="workspace-sub">Columns: <code>subjectname</code>, <code>subjectcode</code>. Existing codes are updated, new ones are added.</p>
+                        <div class="upload-actions">
+                            <label class="file-picker" for="subjectCsvInput">
+                                <i class="fas fa-upload"></i> Choose CSV
+                                <input type="file" id="subjectCsvInput" accept=".csv,text/csv">
+                            </label>
+                            <button type="button" id="subjectCsvImport" class="btn btn-primary" disabled>
+                                <i class="fas fa-cloud-arrow-up"></i> Import subjects
+                            </button>
+                        </div>
+                        <div class="import-summary hidden" id="subjectImportSummary"></div>
+                    </div>
+
+                    <div class="subject-list" id="subjectList"></div>
                 </div>
 
                 <div class="workspace-panel hidden" id="workspaceTeam" data-workspace-panel="team" data-role="proctor-only">
@@ -656,46 +693,44 @@
             </div>
         </div>
 
-        <!-- Question editor -->
+        <!-- Question editor: several questions can be written in one pass -->
         <div id="questionModal" class="modal hidden">
             <div class="modal-content modal-wide">
-                <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New question</h2>
+                <h2 id="questionModalTitle"><i class="fas fa-plus"></i> New questions</h2>
                 <form id="questionForm">
-                    <input type="hidden" id="questionId">
-                    <div class="form-group">
-                        <label for="questionSubject">Subject <span class="required-star">*</span></label>
-                        <input id="questionSubject" list="subjectOptions" maxlength="80" required>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="questionType">Type</label>
-                            <select id="questionType">
-                                <option value="multiple">Multiple choice</option>
-                                <option value="truefalse">True / false</option>
-                                <option value="short">Essay</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="questionMarks">Marks</label>
-                            <input id="questionMarks" type="number" min="1" max="20" value="1">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="questionPrompt">Question <span class="required-star">*</span></label>
-                        <textarea id="questionPrompt" rows="3" maxlength="2000" required></textarea>
-                    </div>
-                    <div class="form-group" id="questionOptionsGroup">
-                        <label>Answer options</label>
-                        <div id="questionOptions" class="option-editor"></div>
-                        <button type="button" id="addOptionBtn" class="btn btn-secondary btn-small">
-                            <i class="fas fa-plus"></i> Add option
-                        </button>
-                        <p class="form-hint" id="questionOptionsHint">Tick the correct answer.</p>
-                    </div>
+                    <div class="draft-list" id="questionDrafts"></div>
+                    <button type="button" id="addDraftQuestionBtn" class="btn btn-secondary btn-block">
+                        <i class="fas fa-plus"></i> Add another question
+                    </button>
                     <div class="modal-buttons">
                         <button type="button" id="cancelQuestionBtn" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" id="questionSaveBtn" class="btn btn-primary">
                             <i class="fas fa-floppy-disk"></i> Save question
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Subject editor -->
+        <div id="subjectModal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="subjectModalTitle"><i class="fas fa-layer-group"></i> New subject</h2>
+                <form id="subjectForm">
+                    <div class="form-group">
+                        <label for="subjectName">Subject name <span class="required-star">*</span></label>
+                        <input id="subjectName" maxlength="120" required placeholder="e.g. Biology">
+                    </div>
+                    <div class="form-group">
+                        <label for="subjectCode">Subject code <span class="required-star">*</span></label>
+                        <input id="subjectCode" maxlength="20" required placeholder="e.g. BIO-101" autocomplete="off">
+                    </div>
+                    <p class="form-hint">The code is unique per institution and is shown beside the name when writing questions.</p>
+                    <p class="form-error hidden" id="subjectError"></p>
+                    <div class="modal-buttons">
+                        <button type="button" id="subjectCancelBtn" class="btn btn-secondary">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-floppy-disk"></i> Save subject
                         </button>
                     </div>
                 </form>
@@ -785,6 +820,10 @@
                                 <span><i class="fas fa-users-gear"></i> Create users</span>
                             </label>
                             <label class="permission-option">
+                                <input type="checkbox" value="subjects">
+                                <span><i class="fas fa-layer-group"></i> Manage subjects</span>
+                            </label>
+                            <label class="permission-option">
                                 <input type="checkbox" value="students">
                                 <span><i class="fas fa-user-graduate"></i> Upload students</span>
                             </label>
@@ -825,6 +864,7 @@
     </script>
     <script src="js/auth.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/subjects.js"></script>
     <script src="js/exam.js"></script>
 </body>
 </html>

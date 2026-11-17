@@ -9,6 +9,8 @@
         short: 'Essay'
     };
 
+    const QUESTION_TYPES = ['multiple', 'truefalse', 'short'];
+
     const state = {
         pageRole: window.PAGE_ROLE || null,
         session: { roomId: null, userType: null },
@@ -24,6 +26,7 @@
         studentTimer: null,
         autoSubmitted: false,
         editingQuestionId: null,
+        questionDrafts: [],
         bankLoading: false,
         examsLoading: false,
         lastRoomId: null
@@ -126,12 +129,16 @@
     function renderSubjectOptions() {
         const selected = el('bankSubjectFilter').value;
         el('bankSubjectFilter').innerHTML = '<option value="">All subjects</option>'
-            + state.subjects.map(subject => `<option value="${escapeAttr(subject)}">${escapeHtml(subject)}</option>`).join('');
-        el('bankSubjectFilter').value = state.subjects.includes(selected) ? selected : '';
+            + state.subjects.map(subject => {
+                const label = subject.code ? `${subject.code} - ${subject.name}` : subject.name;
+                return `<option value="${escapeAttr(subject.name)}"${subject.name === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+            }).join('');
 
-        el('subjectOptions').innerHTML = state.subjects
-            .map(subject => `<option value="${escapeAttr(subject)}"></option>`)
-            .join('');
+        if (el('subjectOptions')) {
+            el('subjectOptions').innerHTML = state.subjects
+                .map(subject => `<option value="${escapeAttr(subject.name)}"></option>`)
+                .join('');
+        }
     }
 
     function filteredQuestions() {
@@ -201,6 +208,148 @@
         `).join('');
     }
 
+    // A question being written in the editor; several can be saved in one pass
+    function emptyDraft() {
+        return { subjectId: '', type: 'multiple', marks: 1, prompt: '', options: ['', '', '', ''], correct: [] };
+    }
+
+    function draftFromQuestion(question) {
+        return {
+            subjectId: question.subjectId || '',
+            type: QUESTION_TYPES.includes(question.type) ? question.type : 'multiple',
+            marks: question.marks || 1,
+            prompt: question.prompt || '',
+            options: (question.options || []).slice(0, 8),
+            correct: (question.correct || []).slice()
+        };
+    }
+
+    function subjectLabel(subject) {
+        return subject.code ? `${subject.code} - ${subject.name}` : subject.name;
+    }
+
+    function subjectSelectMarkup(selectedId) {
+        if (!state.subjects.length) {
+            return '<option value="">No subjects yet - add one in the Subjects tab</option>';
+        }
+        return ['<option value="">Select a subject</option>']
+            .concat(state.subjects.map(subject =>
+                `<option value="${escapeAttr(subject.id)}"${subject.id === selectedId ? ' selected' : ''}>${escapeHtml(subjectLabel(subject))}</option>`
+            ))
+            .join('');
+    }
+
+    function draftCardMarkup(draft, index) {
+        const editing = !!state.editingQuestionId;
+        const isShort = draft.type === 'short';
+        const isTrueFalse = draft.type === 'truefalse';
+        const inputType = draft.type === 'multiple' ? 'checkbox' : 'radio';
+        const options = isTrueFalse ? ['True', 'False'] : draft.options.slice(0, 8);
+        const canAddOption = !isShort && !isTrueFalse && options.length < 8;
+
+        const optionRows = isShort ? '' : options.map((value, optionIndex) => `
+            <div class="option-row" data-option-index="${optionIndex}">
+                <input type="${inputType}" name="correct-${index}" data-correct="${optionIndex}" ${draft.correct.includes(optionIndex) ? 'checked' : ''} aria-label="Correct answer">
+                <input type="text" class="option-input" value="${escapeAttr(value)}" placeholder="Option ${optionIndex + 1}" data-option="${optionIndex}" ${isTrueFalse ? 'readonly' : ''}>
+                ${isTrueFalse ? '' : '<button type="button" class="icon-btn" data-action="remove-option" title="Remove option"><i class="fas fa-xmark"></i></button>'}
+            </div>`).join('');
+
+        return `
+            <article class="draft-card" data-draft-index="${index}">
+                <div class="draft-head">
+                    <h3><span class="draft-number">Q${index + 1}</span> ${editing ? 'Edit question' : 'New question'}</h3>
+                    ${editing ? '' : '<button type="button" class="icon-btn icon-danger" data-action="remove-draft" title="Remove this question"><i class="fas fa-trash"></i></button>'}
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Subject <span class="required-star">*</span></label>
+                        <select data-field="subject">${subjectSelectMarkup(draft.subjectId)}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select data-field="type">
+                            ${QUESTION_TYPES.map(type => `<option value="${type}"${type === draft.type ? ' selected' : ''}>${typeLabel(type)}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group draft-marks">
+                    <label>Marks</label>
+                    <input type="number" min="1" max="20" data-field="marks" value="${draft.marks}">
+                </div>
+                <div class="form-group">
+                    <label>Question <span class="required-star">*</span></label>
+                    <textarea rows="3" maxlength="2000" data-field="prompt" placeholder="Write the question prompt">${escapeHtml(draft.prompt)}</textarea>
+                </div>
+                <div class="form-group draft-options${isShort ? ' hidden' : ''}">
+                    <label>Answer options</label>
+                    <div class="option-editor">${optionRows}</div>
+                    <button type="button" class="btn btn-secondary btn-small${canAddOption ? '' : ' hidden'}" data-action="add-option">
+                        <i class="fas fa-plus"></i> Add option
+                    </button>
+                    <p class="form-hint">${draft.type === 'multiple' ? 'Tick all correct answers.' : 'Tick the correct answer.'}</p>
+                </div>
+            </article>`;
+    }
+
+    function renderDraftList() {
+        const container = el('questionDrafts');
+        if (!container) return;
+        container.innerHTML = state.questionDrafts.map((draft, index) => draftCardMarkup(draft, index)).join('');
+        const addBtn = el('addDraftQuestionBtn');
+        if (addBtn) addBtn.classList.toggle('hidden', !!state.editingQuestionId);
+        updateDraftSaveLabel();
+    }
+
+    function updateDraftSaveLabel() {
+        const btn = el('questionSaveBtn');
+        if (!btn) return;
+        const count = state.questionDrafts.length;
+        btn.innerHTML = state.editingQuestionId
+            ? '<i class="fas fa-floppy-disk"></i> Save question'
+            : `<i class="fas fa-floppy-disk"></i> Save ${count} question${count === 1 ? '' : 's'}`;
+    }
+
+    function draftCardElement(index) {
+        const container = el('questionDrafts');
+        return container ? container.querySelector(`[data-draft-index="${index}"]`) : null;
+    }
+
+    function syncDraftFromCard(index) {
+        const draft = state.questionDrafts[index];
+        const card = draftCardElement(index);
+        if (!draft || !card) return draft;
+
+        const subjectField = card.querySelector('[data-field="subject"]');
+        const marksField = card.querySelector('[data-field="marks"]');
+        const promptField = card.querySelector('[data-field="prompt"]');
+        if (subjectField) draft.subjectId = subjectField.value;
+        if (marksField) draft.marks = Number(marksField.value) || 1;
+        if (promptField) draft.prompt = promptField.value;
+
+        if (draft.type === 'short') return draft;
+
+        const rows = [...card.querySelectorAll('.option-row')];
+        draft.options = rows.map(row => row.querySelector('.option-input').value);
+        draft.correct = rows
+            .map((row, optionIndex) => (row.querySelector('input[data-correct]').checked ? optionIndex : -1))
+            .filter(optionIndex => optionIndex >= 0);
+        return draft;
+    }
+
+    function syncAllDrafts() {
+        state.questionDrafts.forEach((draft, index) => syncDraftFromCard(index));
+    }
+
+    function renderDraftCard(index) {
+        const card = draftCardElement(index);
+        const draft = state.questionDrafts[index];
+        if (!card || !draft) return;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = draftCardMarkup(draft, index);
+        const replacement = wrapper.firstElementChild;
+        if (replacement) card.replaceWith(replacement);
+    }
+
     function openQuestionEditor(question = null) {
         if (!can('questions')) {
             toast('Your access role cannot edit questions', 'error');
@@ -209,142 +358,140 @@
         state.editingQuestionId = question ? question.id : null;
         el('questionModalTitle').innerHTML = question
             ? '<i class="fas fa-pen"></i> Edit question'
-            : '<i class="fas fa-plus"></i> New question';
-        el('questionId').value = question ? question.id : '';
-        el('questionSubject').value = question ? question.subject : '';
-        const typeSelect = el('questionType');
-        typeSelect.value = question ? question.type : 'multiple';
-        if (!typeSelect.value) typeSelect.value = 'multiple';
-        el('questionMarks').value = question ? question.marks : 1;
-        el('questionPrompt').value = question ? question.prompt : '';
+            : '<i class="fas fa-plus"></i> New questions';
 
-        renderOptionEditor(
-            question ? question.options : ['', '', '', ''],
-            question ? question.correct : []
-        );
+        if (question) {
+            state.questionDrafts = [draftFromQuestion(question)];
+        } else {
+            const draft = emptyDraft();
+            if (state.subjects.length === 1) draft.subjectId = state.subjects[0].id;
+            state.questionDrafts = [draft];
+        }
+
+        renderDraftList();
         el('questionModal').classList.remove('hidden');
-        el('questionPrompt').focus();
+        const prompt = el('questionDrafts').querySelector('[data-field="prompt"]');
+        if (prompt) prompt.focus();
     }
 
     function closeQuestionEditor() {
         el('questionModal').classList.add('hidden');
         state.editingQuestionId = null;
+        state.questionDrafts = [];
     }
 
-    function renderOptionEditor(options, correct) {
-        const type = el('questionType').value;
-        const container = el('questionOptions');
-        const group = el('questionOptionsGroup');
-        const hint = el('questionOptionsHint');
-        const addBtn = el('addOptionBtn');
-
-        group.classList.toggle('hidden', type === 'short');
-        if (type === 'short') {
-            container.innerHTML = '';
+    function addDraft() {
+        syncAllDrafts();
+        if (state.questionDrafts.length >= 20) {
+            toast('Add at most 20 questions at a time', 'error');
             return;
         }
 
-        let values;
-        if (type === 'truefalse') {
-            values = ['True', 'False'];
-            addBtn.classList.add('hidden');
-            hint.textContent = 'Select the correct answer.';
-        } else {
-            values = (options || []).slice(0, 8);
-            while (values.length < 2) values.push('');
-            addBtn.classList.toggle('hidden', values.length >= 8);
-            hint.textContent = type === 'multiple' ? 'Tick all correct answers.' : 'Tick the correct answer.';
-        }
+        const draft = emptyDraft();
+        const previous = state.questionDrafts[state.questionDrafts.length - 1];
+        draft.subjectId = previous && previous.subjectId ? previous.subjectId : '';
+        state.questionDrafts.push(draft);
+        renderDraftList();
 
-        const inputType = type === 'multiple' ? 'checkbox' : 'radio';
-        container.innerHTML = values.map((value, index) => `
-            <div class="option-row" data-index="${index}">
-                <input type="${inputType}" name="questionCorrect" value="${index}" ${correct.includes(index) ? 'checked' : ''} aria-label="Correct answer">
-                <input type="text" class="option-input" value="${escapeAttr(value)}" placeholder="Option ${index + 1}" ${type === 'truefalse' ? 'readonly' : ''}>
-                ${type === 'truefalse' ? '' : '<button type="button" class="icon-btn" data-action="remove-option" title="Remove option"><i class="fas fa-xmark"></i></button>'}
-            </div>
-        `).join('');
+        const cards = el('questionDrafts').querySelectorAll('.draft-card');
+        const card = cards[cards.length - 1];
+        if (card) {
+            card.scrollIntoView({ block: 'nearest' });
+            const prompt = card.querySelector('[data-field="prompt"]');
+            if (prompt) prompt.focus();
+        }
     }
 
-    function addOptionRow() {
-        const rows = el('questionOptions').querySelectorAll('.option-row');
-        if (rows.length >= 8) {
+    function removeDraft(index) {
+        syncAllDrafts();
+        if (state.questionDrafts.length <= 1) {
+            toast('Keep at least one question', 'error');
+            return;
+        }
+        state.questionDrafts.splice(index, 1);
+        renderDraftList();
+    }
+
+    function changeDraftType(index, type) {
+        syncAllDrafts();
+        const draft = state.questionDrafts[index];
+        if (!draft) return;
+
+        draft.type = QUESTION_TYPES.includes(type) ? type : 'multiple';
+        if (draft.type === 'short') {
+            draft.options = [];
+            draft.correct = [];
+        } else if (draft.type === 'truefalse') {
+            draft.options = ['True', 'False'];
+            draft.correct = draft.correct.filter(optionIndex => optionIndex < 2).slice(0, 1);
+        } else {
+            if (!draft.options.length) draft.options = ['', '', '', ''];
+            draft.correct = draft.correct.filter(optionIndex => optionIndex < draft.options.length);
+        }
+        renderDraftCard(index);
+    }
+
+    function addDraftOption(index) {
+        syncAllDrafts();
+        const draft = state.questionDrafts[index];
+        if (!draft || draft.type === 'short' || draft.type === 'truefalse') return;
+        if (draft.options.length >= 8) {
             toast('A question can have at most 8 options', 'error');
             return;
         }
-        const container = el('questionOptions');
-        const index = rows.length;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'option-row';
-        wrapper.dataset.index = String(index);
-        wrapper.innerHTML = `
-            <input type="${el('questionType').value === 'multiple' ? 'checkbox' : 'radio'}" name="questionCorrect" value="${index}" aria-label="Correct answer">
-            <input type="text" class="option-input" value="" placeholder="Option ${index + 1}">
-            <button type="button" class="icon-btn" data-action="remove-option" title="Remove option"><i class="fas fa-xmark"></i></button>
-        `;
-        container.appendChild(wrapper);
-        reindexOptions();
-        wrapper.querySelector('.option-input').focus();
+        draft.options.push('');
+        renderDraftCard(index);
     }
 
-    function removeOptionRow(button) {
-        const row = button.closest('.option-row');
-        const rows = el('questionOptions').querySelectorAll('.option-row');
-        if (rows.length <= 2) {
+    function removeDraftOption(index, optionIndex) {
+        syncAllDrafts();
+        const draft = state.questionDrafts[index];
+        if (!draft || draft.type === 'short' || draft.type === 'truefalse') return;
+        if (draft.options.length <= 2) {
             toast('Keep at least two options', 'error');
             return;
         }
-        row.remove();
-        reindexOptions();
+        draft.options.splice(optionIndex, 1);
+        draft.correct = draft.correct
+            .filter(value => value !== optionIndex)
+            .map(value => (value > optionIndex ? value - 1 : value));
+        renderDraftCard(index);
     }
 
-    function reindexOptions() {
-        const rows = [...el('questionOptions').querySelectorAll('.option-row')];
-        rows.forEach((row, index) => {
-            row.dataset.index = String(index);
-            const input = row.querySelector('input[name="questionCorrect"]');
-            if (input) input.value = String(index);
-            const text = row.querySelector('.option-input');
-            if (text) text.placeholder = `Option ${index + 1}`;
-        });
-        el('addOptionBtn').classList.toggle('hidden', rows.length >= 8);
-    }
 
-    function collectQuestionPayload() {
-        const type = el('questionType').value;
+
+    function draftPayload(draft, index) {
+        const label = `Question ${index + 1}`;
+        if (!draft.subjectId) throw new Error(`${label}: select a subject`);
+
+        const prompt = String(draft.prompt || '').trim();
+        if (!prompt) throw new Error(`${label}: add the question text`);
+
         const payload = {
-            subject: el('questionSubject').value.trim(),
-            type,
-            prompt: el('questionPrompt').value.trim(),
-            marks: Number(el('questionMarks').value) || 1,
+            subjectId: draft.subjectId,
+            type: draft.type,
+            prompt,
+            marks: Math.min(20, Math.max(1, Number(draft.marks) || 1)),
             options: [],
             correct: []
         };
 
-        if (!payload.subject) throw new Error('Subject is required');
-        if (!payload.prompt) throw new Error('Question text is required');
-        if (type === 'short') return payload;
+        if (draft.type === 'short') return payload;
 
-        if (type === 'truefalse') {
+        if (draft.type === 'truefalse') {
+            if (!draft.correct.length) throw new Error(`${label}: select the correct answer`);
             payload.options = ['True', 'False'];
-            const checked = el('questionOptions').querySelector('input[name="questionCorrect"]:checked');
-            if (!checked) throw new Error('Select the correct answer');
-            payload.correct = [Number(checked.value)];
+            payload.correct = [draft.correct[0]];
             return payload;
         }
 
-        const rows = [...el('questionOptions').querySelectorAll('.option-row')];
-        const options = rows.map(row => row.querySelector('.option-input').value.trim());
-        const correct = rows
-            .map((row, index) => row.querySelector('input[name="questionCorrect"]').checked ? index : -1)
-            .filter(index => index >= 0);
-
-        if (options.filter(Boolean).length < 2) throw new Error('Add at least two answer options');
-        if (options.some(option => !option)) throw new Error('Fill in every option or remove the empty one');
-        if (!correct.length) throw new Error('Select the correct answer');
+        const options = draft.options.map(option => String(option || '').trim());
+        if (options.filter(Boolean).length < 2) throw new Error(`${label}: add at least two answer options`);
+        if (options.some(option => !option)) throw new Error(`${label}: fill in every option or remove the empty one`);
+        if (!draft.correct.length) throw new Error(`${label}: select the correct answer`);
 
         payload.options = options;
-        payload.correct = correct;
+        payload.correct = draft.correct.slice().sort((a, b) => a - b);
         return payload;
     }
 
@@ -354,28 +501,59 @@
             toast('Your access role cannot edit questions', 'error');
             return;
         }
-        const submitBtn = el('questionForm').querySelector('button[type="submit"]');
-        submitBtn.disabled = true;
+
+        syncAllDrafts();
+        const submitBtn = el('questionSaveBtn');
+        if (submitBtn) submitBtn.disabled = true;
 
         try {
-            const payload = collectQuestionPayload();
             if (state.editingQuestionId) {
+                const payload = draftPayload(state.questionDrafts[0], 0);
                 await api(`/api/questions/${encodeURIComponent(state.editingQuestionId)}`, {
                     method: 'PUT',
                     body: JSON.stringify(payload)
                 });
                 toast('✅ Question updated', 'success');
-            } else {
-                await api('/api/questions', { method: 'POST', body: JSON.stringify(payload) });
-                toast('✅ Question added to the bank', 'success');
+                closeQuestionEditor();
+                await loadBank();
+                if (state.draft) renderQuestionPicker();
+                return;
             }
+
+            const payloads = state.questionDrafts.map((draft, index) => draftPayload(draft, index));
+            const data = await api('/api/questions/batch', {
+                method: 'POST',
+                body: JSON.stringify({ questions: payloads })
+            });
+            const summary = data.summary || {};
+
+            // Keep the questions the server rejected so they can be corrected
+            if (summary.skipped) {
+                const failed = new Set((summary.errors || []).map(error => error.index));
+                const firstError = (summary.errors || [])[0];
+                state.questionDrafts = state.questionDrafts.filter((draft, index) => failed.has(index));
+                if (!state.questionDrafts.length) state.questionDrafts = [emptyDraft()];
+                renderDraftList();
+                await loadBank();
+                toast(
+                    `⚠️ ${summary.created || 0} saved, ${summary.skipped} needs attention` +
+                    (firstError ? ` — question ${firstError.index + 1}: ${firstError.message}` : ''),
+                    'error'
+                );
+                return;
+            }
+
+            toast(
+                `✅ ${summary.created || payloads.length} question${payloads.length === 1 ? '' : 's'} added to the bank`,
+                'success'
+            );
             closeQuestionEditor();
             await loadBank();
             if (state.draft) renderQuestionPicker();
         } catch (error) {
             toast(`❌ ${error.message}`, 'error');
         } finally {
-            submitBtn.disabled = false;
+            if (submitBtn) submitBtn.disabled = false;
         }
     }
 
@@ -1141,6 +1319,7 @@
     function switchWorkspace(key) {
         if (state.pageRole === 'proctor') {
             if (key === 'bank' && !canAny(['questions', 'quizzes'])) return;
+            if (key === 'subjects' && !can('subjects')) return;
             if (key === 'exams' && !canAny(['quizzes', 'invigilation'])) return;
             if (key === 'team' && !can('users')) return;
             if (key === 'students' && !can('students')) return;
@@ -1198,6 +1377,11 @@
         });
         el('examLiveChip')?.addEventListener('click', () => switchWorkspace('exams'));
 
+        // The question editor reads its subject options from the bank payload
+        document.addEventListener('verot:subjects-changed', () => {
+            if (canAny(['questions', 'quizzes'])) loadBank();
+        });
+
         el('newQuestionBtn')?.addEventListener('click', () => openQuestionEditor());
         el('bankSearch')?.addEventListener('input', renderBank);
         el('bankSubjectFilter')?.addEventListener('change', renderBank);
@@ -1217,17 +1401,46 @@
 
         el('questionForm')?.addEventListener('submit', saveQuestion);
         el('cancelQuestionBtn')?.addEventListener('click', closeQuestionEditor);
-        el('questionType')?.addEventListener('change', () => {
-            const rows = [...el('questionOptions').querySelectorAll('.option-input')];
-            const existing = rows.map(input => input.value);
-            const checked = [...el('questionOptions').querySelectorAll('input[name="questionCorrect"]:checked')]
-                .map(input => Number(input.value));
-            renderOptionEditor(existing, checked);
+        el('addDraftQuestionBtn')?.addEventListener('click', addDraft);
+
+        el('questionDrafts')?.addEventListener('input', event => {
+            const field = event.target.closest('[data-draft-index]');
+            if (!field) return;
+            if (!event.target.matches('[data-field="prompt"], [data-field="marks"], [data-option]')) return;
+            syncDraftFromCard(Number(field.dataset.draftIndex));
         });
-        el('addOptionBtn')?.addEventListener('click', addOptionRow);
-        el('questionOptions')?.addEventListener('click', event => {
-            const button = event.target.closest('[data-action="remove-option"]');
-            if (button) removeOptionRow(button);
+
+        el('questionDrafts')?.addEventListener('change', event => {
+            const card = event.target.closest('[data-draft-index]');
+            if (!card) return;
+            const index = Number(card.dataset.draftIndex);
+
+            if (event.target.matches('[data-field="subject"]')) {
+                syncDraftFromCard(index);
+                return;
+            }
+            if (event.target.matches('[data-field="type"]')) {
+                changeDraftType(index, event.target.value);
+                return;
+            }
+            syncDraftFromCard(index);
+        });
+
+        el('questionDrafts')?.addEventListener('click', event => {
+            const button = event.target.closest('[data-action]');
+            if (!button) return;
+            const card = button.closest('[data-draft-index]');
+            if (!card) return;
+            const index = Number(card.dataset.draftIndex);
+
+            if (button.dataset.action === 'remove-draft') {
+                removeDraft(index);
+            } else if (button.dataset.action === 'add-option') {
+                addDraftOption(index);
+            } else if (button.dataset.action === 'remove-option') {
+                const row = button.closest('[data-option-index]');
+                if (row) removeDraftOption(index, Number(row.dataset.optionIndex));
+            }
         });
 
         el('newExamBtn')?.addEventListener('click', openExamModal);
