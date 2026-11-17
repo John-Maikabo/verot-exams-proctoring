@@ -271,10 +271,12 @@
         const canAddOption = !isShort && !isTrueFalse && options.length < 8;
 
         const marksControl = `
-            <label class="draft-marks">
+            <div class="draft-marks">
                 <span>Marks</span>
-                <input type="number" min="1" max="20" data-field="marks" value="${draft.marks}">
-            </label>`;
+                <button type="button" class="mark-step" data-action="marks-down" title="Reduce marks" aria-label="Reduce marks"><i class="fas fa-minus"></i></button>
+                <input type="number" min="1" max="20" step="1" inputmode="numeric" data-field="marks" value="${draft.marks}" aria-label="Marks for question ${index + 1}">
+                <button type="button" class="mark-step" data-action="marks-up" title="Increase marks" aria-label="Increase marks"><i class="fas fa-plus"></i></button>
+            </div>`;
 
         const optionRows = isShort ? '' : options.map((value, optionIndex) => `
             <div class="option-row" data-option-index="${optionIndex}">
@@ -342,7 +344,7 @@
 
         const marksField = card.querySelector('[data-field="marks"]');
         const promptField = card.querySelector('[data-field="prompt"]');
-        if (marksField) draft.marks = Number(marksField.value) || 1;
+        if (marksField) draft.marks = clampMarks(marksField.value);
         if (promptField) draft.prompt = promptField.value;
 
         if (draft.type === 'short') return draft;
@@ -357,6 +359,19 @@
 
     function syncAllDrafts() {
         state.questionDrafts.forEach((draft, index) => syncDraftFromCard(index));
+    }
+
+    function clampMarks(value) {
+        return Math.min(20, Math.max(1, Number(value) || 1));
+    }
+
+    function setDraftMarks(index, marks) {
+        syncAllDrafts();
+        const draft = state.questionDrafts[index];
+        if (!draft) return;
+        draft.marks = clampMarks(marks);
+        const input = draftCardElement(index)?.querySelector('[data-field="marks"]');
+        if (input) input.value = draft.marks;
     }
 
     function renderDraftCard(index) {
@@ -467,7 +482,7 @@
             subjectId: state.questionSubjectId,
             type: draft.type,
             prompt,
-            marks: Math.min(20, Math.max(1, Number(draft.marks) || 1)),
+            marks: clampMarks(draft.marks),
             options: [],
             correct: []
         };
@@ -1420,6 +1435,9 @@
             const index = Number(card.dataset.draftIndex);
 
             syncDraftFromCard(index);
+            if (event.target.matches('[data-field="marks"]')) {
+                setDraftMarks(index, event.target.value);
+            }
         });
 
         el('questionDrafts')?.addEventListener('click', event => {
@@ -1431,6 +1449,11 @@
 
             if (button.dataset.action === 'remove-draft') {
                 removeDraft(index);
+            } else if (button.dataset.action === 'marks-up' || button.dataset.action === 'marks-down') {
+                syncAllDrafts();
+                const draft = state.questionDrafts[index];
+                if (!draft) return;
+                setDraftMarks(index, draft.marks + (button.dataset.action === 'marks-up' ? 1 : -1));
             } else if (button.dataset.action === 'add-option') {
                 addDraftOption(index);
             } else if (button.dataset.action === 'remove-option') {

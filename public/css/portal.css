@@ -2419,8 +2419,37 @@ body.auth-page {
 }
 
 .draft-marks input {
-    width: 76px;
-    padding: 6px 8px;
+    width: 58px;
+    padding: 6px 4px;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.draft-marks input::-webkit-outer-spin-button,
+.draft-marks input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.mark-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--p-border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--p-text, #0f172a);
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.mark-step:hover {
+    background: var(--p-surface-2, #f1f5f9);
 }
 
 .draft-add-row {
