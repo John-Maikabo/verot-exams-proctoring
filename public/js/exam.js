@@ -419,11 +419,6 @@
 
     function addDraft(type) {
         syncAllDrafts();
-        if (state.questionDrafts.length >= 20) {
-            toast('Add at most 20 questions at a time', 'error');
-            return;
-        }
-
         state.questionDrafts.push(emptyDraft(type));
         renderDraftList();
 
